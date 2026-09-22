@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tohto-baseball-savant.nbdn87qjxf.chatgpt.site/sitemap.xml
+

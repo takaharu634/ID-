@@ -1,0 +1,19 @@
+{
+  "name": "ID東都",
+  "short_name": "ID東都",
+  "description": "東都大学野球のTrackManデータを検索・比較・可視化",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f9f9",
+  "theme_color": "#153f43",
+  "lang": "ja",
+  "orientation": "any",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "投球検索", "short_name": "投球検索", "url": "/?表示=search" },
+    { "name": "ランキング", "short_name": "ランキング", "url": "/?表示=leaders&指標=pitching_percentile" }
+  ]
+}

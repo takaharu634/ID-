@@ -1,0 +1,19 @@
+{
+  "batters": 82,
+  "battedBalls": 381,
+  "battingValidationVersion": 1,
+  "spinMethod": "nathan-2020-b-standard-air-v1",
+  "spinPitches": 2363,
+  "estimatedSpinPitches": 2135,
+  "files": 8,
+  "pitches": 2364,
+  "games": 8,
+  "teams": 6,
+  "duplicates": 0,
+  "firstDate": "2026-09-08",
+  "lastDate": "2026-09-10",
+  "season": "2026-fall",
+  "generatedAt": "2026-09-11T03:18:18.242Z",
+  "sourceFingerprint": "43c7c26dbd0d12bd1e1fc150f0e4c7d1fa7dde134cdbed591be98fc6ccfc507e",
+  "listingFingerprint": "951fee058fbcb5dc6158abbe766bed29336a6a267c67435eeefa7c1647a1cdfb"
+}

@@ -1,0 +1,98 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ID東都 公開読み取り専用API",
+    "version": "1.0.0",
+    "description": "公開済みの選手・投手・球種集計を取得します。書き込み機能はありません。"
+  },
+  "servers": [{ "url": "https://tohto-baseball-savant.nbdn87qjxf.chatgpt.site" }],
+  "paths": {
+    "/api/public/metadata": { "get": { "summary": "対象データ、単位、指標定義", "responses": { "200": { "description": "成功" } } } },
+    "/api/public/players": {
+      "get": {
+        "summary": "選手検索",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "team", "in": "query", "schema": { "type": "string" } },
+          { "name": "role", "in": "query", "schema": { "type": "string", "enum": ["投手", "打者", "捕手"] } }
+        ],
+        "responses": { "200": { "description": "成功" } }
+      }
+    },
+    "/api/public/arsenal": {
+      "get": {
+        "summary": "投手の球種別集計",
+        "parameters": [
+          { "name": "player", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "team", "in": "query", "schema": { "type": "string" } },
+          { "name": "minPitches", "in": "query", "schema": { "type": "integer", "default": 1, "minimum": 1 } }
+        ],
+        "responses": { "200": { "description": "成功" }, "404": { "description": "投手なし" }, "409": { "description": "候補が複数" } }
+      }
+    },
+    "/api/public/rankings/pitchers": {
+      "get": {
+        "summary": "投手の球種別ランキング",
+        "parameters": [
+          { "name": "team", "in": "query", "schema": { "type": "string" } },
+          { "name": "pitchType", "in": "query", "schema": { "type": "string" } },
+          { "name": "metric", "in": "query", "schema": { "type": "string", "default": "avgIvb" } },
+          { "name": "minPitches", "in": "query", "schema": { "type": "integer", "default": 20, "minimum": 1 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"], "default": "desc" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": { "200": { "description": "成功" } }
+      }
+    },
+    "/api/public/scouting/pitcher": {
+      "get": {
+        "summary": "投手のカウント別・対左右別スカウティング集計",
+        "parameters": [
+          { "name": "player", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "team", "in": "query", "schema": { "type": "string" } },
+          { "name": "gameId", "in": "query", "schema": { "type": "string" } },
+          { "name": "batterSide", "in": "query", "schema": { "type": "string", "enum": ["右", "左"] } },
+          { "name": "pitchType", "in": "query", "schema": { "type": "string" } },
+          { "name": "opponent", "in": "query", "schema": { "type": "string" } },
+          { "name": "fromDate", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "toDate", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "minSample", "in": "query", "schema": { "type": "integer", "default": 5, "minimum": 1 } }
+        ],
+        "responses": { "200": { "description": "成功" }, "404": { "description": "投手なし" }, "409": { "description": "候補が複数" } }
+      }
+    },
+    "/api/public/scouting/batter": {
+      "get": {
+        "summary": "打者アプローチカード指標",
+        "parameters": [
+          { "name": "player", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "team", "in": "query", "schema": { "type": "string" } },
+          { "name": "gameId", "in": "query", "schema": { "type": "string" } },
+          { "name": "pitcherThrows", "in": "query", "schema": { "type": "string", "enum": ["右", "左"] } },
+          { "name": "pitchType", "in": "query", "schema": { "type": "string" } },
+          { "name": "opponent", "in": "query", "schema": { "type": "string" } },
+          { "name": "fromDate", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "toDate", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "minSample", "in": "query", "schema": { "type": "integer", "default": 5, "minimum": 1 } }
+        ],
+        "responses": { "200": { "description": "成功" }, "404": { "description": "打者なし" }, "409": { "description": "候補が複数" } }
+      }
+    },
+    "/api/public/scouting/batter-profile": {
+      "get": {
+        "summary": "打者プロファイル（特徴説明・球種群・コース・変化・球速帯）",
+        "parameters": [
+          { "name": "player", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "team", "in": "query", "schema": { "type": "string" } },
+          { "name": "gameId", "in": "query", "schema": { "type": "string" } },
+          { "name": "pitcherThrows", "in": "query", "schema": { "type": "string", "enum": ["右", "左"] } },
+          { "name": "pitchType", "in": "query", "schema": { "type": "string" } },
+          { "name": "opponent", "in": "query", "schema": { "type": "string" } },
+          { "name": "fromDate", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "toDate", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "成功" }, "404": { "description": "打者なし" }, "409": { "description": "候補が複数" } }
+      }
+    }
+  }
+}

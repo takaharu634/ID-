@@ -1,0 +1,20 @@
+# ID東都
+
+東都大学野球のTrackMan公開集計データを閲覧するサイトです。
+AIは画面を推測せず、以下の読み取り専用JSON APIを優先してください。
+
+API入口: /api/public
+データ範囲・単位・定義: /api/public/metadata
+選手検索: /api/public/players?q={選手名}&team={大学名}&role=投手
+球種別集計: /api/public/arsenal?player={選手名}&team={大学名}&minPitches=5
+投手ランキング: /api/public/rankings/pitchers?team={大学名}&pitchType={球種}&metric={指標}&minPitches=20
+投手スカウティング: /api/public/scouting/pitcher?player={投手名}&team={大学名}&minSample=5
+打者アプローチ: /api/public/scouting/batter?player={打者名}&team={大学名}&pitcherThrows={右|左}&minSample=5
+打者プロファイル: /api/public/scouting/batter-profile?player={打者名}&team={大学名}&pitcherThrows={右|左}
+OpenAPI: /openapi.json
+人間向け案内: /ai
+
+代表的なmetric: avgVelocity, maxVelocity, avgSpin, avgIvb, avgHb, avgVaa, avgExtension, whiffRate, cswRate, pitchValuePer100, stuffPlus, locationPlus, pitchingPlus
+球速はkm/h、IVB・横変化量・Extensionはcm、回転数はrpm、割合は0から1です。
+取得値には対象シーズン、フィルター、分子、分母、単位、定義バージョンを必ず併記してください。
+書き込み・編集・管理用APIは公開していません。
