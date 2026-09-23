@@ -21,7 +21,7 @@
     "trackman:sync": "node scripts/sync-autumn-data.mjs",
     "test:batting": "node --test tests/batting-ui.test.mjs tests/autumn-import.test.mjs",
     "test:autumn": "node --test tests/autumn-import.test.mjs tests/batting-ui.test.mjs tests/autumn-spin.test.mjs",
-    "test:research": "node --experimental-strip-types --test tests/tohto-research.test.ts tests/import-pipeline.test.mjs",
+    "test:import": "node --test tests/import-pipeline.test.mjs",
     "test:runtime": "node --test tests/import-runtime.test.mjs"
   },
   "dependencies": {

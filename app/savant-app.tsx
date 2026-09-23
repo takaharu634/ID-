@@ -8,7 +8,6 @@ import { PlayerOptions, comparePlayerNames } from './player-options';
 import { createPortal } from "react-dom";
 import { batterDisplayMinimum, displayedBatters, batterDisplayHighlights, isMeasuredFairBall } from "../lib/batter-display";
 import { type Row, type Dataset, type SeasonKey, SEASONS } from "../lib/dataset-types";
-import TohtoResearch from "./tohto-research";
 import { loadStaticDataset, loadBundledDataset, resetDatasetCache, createLatestRequest, readPreference, savePreference } from "../lib/dataset-loader";
 import { METRIC_INFO, METRIC_KEY_BY_LABEL, getMetricInfo, type MetricInfo } from "../lib/metric-definitions";
 import { printReport } from "./print-report";
@@ -47,7 +46,7 @@ import {
   type Rating,
 } from "../lib/batter-profile";
 
-type ViewName = "research" | "umpires" | "home" | "games" | "search" | "visuals" | "barrel" | "compare" | "stats" | "leaders" | "quality" | "player" | "spin" | "shift" | "news" | "glossary";
+type ViewName = "umpires" | "home" | "games" | "search" | "visuals" | "barrel" | "compare" | "stats" | "leaders" | "quality" | "player" | "spin" | "shift" | "news" | "glossary";
 type RouteState = { view: ViewName; playerId?: string; board?: string };
 type NewsItem = {
   id: string; team: string; playerKanji?: string; playerRoman?: string; playerId?: string;
@@ -151,7 +150,7 @@ function readRoute(): RouteState {
   const view = (params.get("表示") ?? "home") as ViewName;
   const requestedBoard = params.get("指標") ?? undefined;
   return {
-    view: ["research", "umpires", "home", "games", "search", "visuals", "barrel", "compare", "stats", "leaders", "quality", "player", "spin", "shift", "news", "glossary"].includes(view) ? view : "home",
+    view: ["umpires", "home", "games", "search", "visuals", "barrel", "compare", "stats", "leaders", "quality", "player", "spin", "shift", "news", "glossary"].includes(view) ? view : "home",
     playerId: params.get("選手") ?? undefined,
     board: requestedBoard === "catching_throwing" ? "catching_pop" : requestedBoard,
   };
@@ -429,14 +428,13 @@ export default function SavantApp() {
           if (!value) playUiSound("pop", false);
         }}
         season={loadingSeason ?? season}
-        onSeason={(value) => { setRoute({ view: ["umpires","research"].includes(route.view) ? route.view : "home" }); loadDataset(value); }}
+        onSeason={(value) => { setRoute({ view: route.view === "umpires" ? route.view : "home" }); loadDataset(value); }}
       />
       {(loadingSeason || loadError) && <div className="dataset-status" role="status" aria-live="polite">{loadingSeason ? `${SEASONS[loadingSeason].label}を読み込んでいます。現在の表示は${SEASONS[season].label}です。` : <>{loadError}<button type="button" onClick={() => loadDataset(requestedSeason.current)}>再読み込み</button></>}</div>}
       <TeamStrip teams={data.teams} season={season} onTeam={() => navigate({ view: "stats" })} />
       {menuOpen && <MenuOverlay close={() => setMenuOpen(false)} navigate={navigate} data={data} />}
 
       <main className="page-wrap"><Suspense fallback={<div className="loading-panel" role="status">分析画面を準備しています…</div>}>
-        {route.view === "research" && <TohtoResearch key={season} data={data} season={season} />}
         {route.view === "home" && <HomeView data={data} navigate={navigate} />}
         {route.view === "umpires" && <UmpireAnalysis key={season} data={data} />}
         {route.view === "games" && <GamesView data={data} />}
@@ -505,10 +503,9 @@ function Header({ searchText, setSearchText, suggestions, onPlayer, navigate, on
         <button onClick={() => navigate({ view: "leaders", board: "pitching_percentile" })}>ランキング</button>
         <button onClick={() => navigate({ view: "compare" })}>選手比較</button>
         <button onClick={() => navigate({ view: "stats" })}>リーグ統計</button>
-        <button onClick={() => navigate({ view: "quality" })}>PITCH QUALITY</button>
-        <button onClick={() => navigate({ view: "spin" })}>回転アニメーション</button>
+        <button onClick={() => navigate({ view: "quality" })}>PITCHスコア</button>
+        <button onClick={() => navigate({ view: "spin" })}>回転</button>
         <button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button>
-        <button onClick={() => navigate({ view: "research" })}>東都独自研究</button>
         <button onClick={() => navigate({ view: "umpires" })}>審判分析</button>
         <button onClick={() => navigate({ view: "shift" })}>SHIFT</button>
         <button onClick={() => navigate({ view: "news" })}>NEWS</button>
@@ -547,10 +544,9 @@ function MenuOverlay({ close, navigate, data }: { close: () => void; navigate: (
           <button onClick={() => navigate({ view: "leaders", board: "pitching_percentile" })}>ランキング</button>
           <button onClick={() => navigate({ view: "compare" })}>選手比較</button>
           <button onClick={() => navigate({ view: "stats" })}>リーグ統計 <small>{data.metadata.season}</small></button>
-          <button onClick={() => navigate({ view: "quality" })}>PITCH QUALITY / 投球品質</button>
-          <button onClick={() => navigate({ view: "spin" })}>回転アニメーション / SPIN LAB</button>
+          <button onClick={() => navigate({ view: "quality" })}>PITCHスコア</button>
+          <button onClick={() => navigate({ view: "spin" })}>回転</button>
           <button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button>
-          <button onClick={() => navigate({ view: "research" })}>東都独自研究</button>
         <button onClick={() => navigate({ view: "umpires" })}>審判分析</button>
         <button onClick={() => navigate({ view: "shift" })}>SHIFT / 守備配置</button>
           <button onClick={() => navigate({ view: "news" })}>NEWS / TRAINING WATCH</button>
@@ -626,7 +622,7 @@ function HomeView({ data, navigate }: { data: Dataset; navigate: (route: RouteSt
         </div>
         <aside className="home-aside">
           <h2>クイック分析</h2>
-          <QuickLink title="投球品質" detail="球質指数+・コース指数+" onClick={() => navigate({ view: "leaders", board: "pitching_percentile" })} />
+          <QuickLink title="PITCHスコア" detail="球質指数+・コース指数+" onClick={() => navigate({ view: "leaders", board: "pitching_percentile" })} />
           <QuickLink title="打球分析" detail="打球速度・角度・バレル" onClick={() => navigate({ view: "leaders", board: "batting_ev" })} />
           <QuickLink title="投手の球種構成" detail="球速・回転・変化量" onClick={() => navigate({ view: "leaders", board: "pitching_arsenal" })} />
           <QuickLink title="捕手成績" detail="フレーミング・追加ストライク" onClick={() => navigate({ view: "leaders", board: "catching_framing" })} />
@@ -1554,7 +1550,7 @@ function PitchQualityView({ data, navigate }: { data: Dataset; navigate: (route:
   const source = mode === "pitch" ? data.pitchTypes : data.pitchers;
   const rows = source.filter((row) => (row.pitches ?? 0) >= minimum && (!team || row.team === team) && (mode === "pitcher" || !pitchType || row.pitchType === pitchType) && (!needle || [row.kanji,row.pitcherKanji,row.name,row.pitcher,row.team,row.pitchType].some((value)=>normalizeSearch(String(value??"")).includes(needle))))
     .sort((a,b)=>(b.pitchingPlus??-Infinity)-(a.pitchingPlus??-Infinity));
-  return <PageSection eyebrow="PITCH QUALITY / TOHTO MODEL" title="投球品質" description="球質指数+、コース指数+、総合投球指数+をすべて100＝東都リーグ平均で比較します。結果指標ではなく、TrackMan計測値から投球内容を分解する東都版モデルです。">
+  return <PageSection eyebrow="PITCH SCORE / TOHTO MODEL" title="PITCHスコア" description="球質指数+、コース指数+、総合投球指数+をすべて100＝東都リーグ平均で比較します。結果指標ではなく、TrackMan計測値から投球内容を分解する東都版モデルです。">
     <div className="quality-definition-grid">
       <article><span>STUFF+</span><h2>球質指数+</h2><strong>球そのもの</strong><p>球速45%、回転・エクステンション・変化15%ずつ、進入角10%。同じ球種の中で比較します。</p></article>
       <article><span>LOCATION+</span><h2>コース指数+</h2><strong>到達位置の価値</strong><p>真ん中を避け、ゾーン端や追わせる位置へ届いた度合い。狙った場所との差を測るCommandではありません。</p></article>
@@ -1838,7 +1834,7 @@ function PlayerView({ season, data, player, navigate, news }: { season: SeasonKe
     ? (filtersActive ? deriveBatterSummary(player.batting, batterPitches, data.league) : player.batting)
     : null, [player.batting, batterPitches, data.league, filtersActive]);
   const allRolePitches = useMemo(() => applyPlayerFilters(data.pitches, filters, role === "投手" ? "投手" : "打者"), [data.pitches, filters, role]);
-  const tabs = role === "投手" ? ["概要", "PITCH QUALITY", "球種", "回転", "コース", "打球", "試合推移", "配球", "NEWS", "AIレポート"] : role === "打者" ? ["概要", "打者プロファイル", "球種", "コース", "打球", "試合推移", ...(player.team !== "中央大学" ? ["シフト"] : []), "NEWS", "AIレポート"] : ["概要", "コース", "NEWS"];
+  const tabs = role === "投手" ? ["概要", "PITCHスコア", "球種", "回転", "コース", "打球", "試合推移", "配球", "NEWS", "AIレポート"] : role === "打者" ? ["概要", "打者プロファイル", "球種", "コース", "打球", "試合推移", ...(player.team !== "中央大学" ? ["シフト"] : []), "NEWS", "AIレポート"] : ["概要", "コース", "NEWS"];
   useEffect(() => { if (!tabs.includes(tab)) setTab("概要"); }, [role, data.metadata.season]);
   return (
     <>
@@ -1949,7 +1945,7 @@ function SampleNotice({ n, threshold = 20 }: { n: number; threshold?: number }) 
 
 function PitcherTab({ tab, season, player, pitches, allPitches, arsenal, benchmarks, filtersActive, spinPitchType, onOpenSpin }: { tab: string; season: SeasonKey; player: Row; pitches: Row[]; allPitches: Row[]; arsenal: Row[]; benchmarks: Record<string, Benchmark>; filtersActive: boolean; spinPitchType: string; onOpenSpin: (pitchType: string) => void }) {
   if (tab === "概要") return <><SampleNotice n={pitches.length} threshold={50} /><MatchupInsights role="pitcher" playerPitches={pitches} allPitches={allPitches} /><PitcherProfile player={player} pitches={pitches} allPitches={allPitches} arsenal={summarizeByPitchType(pitches, "pitcher")} benchmarks={benchmarks} onOpenSpin={onOpenSpin} /></>;
-  if (tab === "PITCH QUALITY") return <PitchQualityPlayerPanel player={player} arsenal={arsenal} />;
+  if (tab === "PITCHスコア") return <PitchQualityPlayerPanel player={player} arsenal={arsenal} />;
   if (tab === "球種") return <div className="profile-body"><SampleNotice n={pitches.length} threshold={50} /><div className="chart-grid"><ChartCard title="投球位置"><PitchPlot pitches={pitches} /></ChartCard><ChartCard title="リリース位置"><ReleasePlot pitches={pitches} /></ChartCard></div><SectionTitle title="球種別成績" /><SimpleTable rows={summarizeByPitchType(pitches, "pitcher")} rowKey="pitchType" onRowKeyClick={(row) => onOpenSpin(String(row.pitchType))} columns={[{key:"pitchType",label:"球種"},{key:"pitches",label:"球数"},{key:"avgVelocity",label:"平均球速"},{key:"maxVelocity",label:"最高球速"},{key:"avgSpin",label:"回転数"},{key:"avgIvb",label:"縦変化"},{key:"avgHb",label:"横変化"},{key:"avgVaa",label:"進入角"},{key:"avgExtension",label:"エクステンション"},{key:"whiffRate",label:"空振り率",format:"rate"},{key:"swingingStrikeRate",label:"SwStr%",format:"rate"},{key:"cswRate",label:"見逃し・空振り率",format:"rate"},{key:"avgExitVelocity",label:"平均被打球速度"},{key:"hardHitRate",label:"被強打率",format:"rate"},{key:"sampleNote",label:"標本"}]} /></div>;
   if (tab === "回転") return <PitchSpinProfile season={season} playerId={player.id} playerName={player.kanji || player.name} pitches={pitches} filtersActive={filtersActive} initialPitchType={spinPitchType} />;
   if (tab === "コース") return <PitcherLocationPanel pitches={pitches} />;
@@ -1964,7 +1960,7 @@ function PitchQualityPlayerPanel({ player, arsenal }: { player: Row; arsenal: Ro
   const strongStuff = Math.round(Number(player.stuffPlus)) >= 105;
   const strongLocation = Math.round(Number(player.locationPlus)) >= 105;
   const diagnosis = strongStuff && strongLocation ? "球質とコースがともに平均以上。現在の球種構成を軸に配球最適化を進められます。" : strongStuff ? "球質が先行しています。出力向上より、真ん中率と決め球の到達位置を優先して改善する段階です。" : strongLocation ? "コースで補えている投手です。球速、変化量、進入角のうち球種別の弱点を改良すると上積みが見込めます。" : "球質と到達位置の両方に改善余地があります。まず使用率の高い球種から一要素ずつ修正するのが合理的です。";
-  return <div className="profile-body quality-player-panel"><section className="quality-player-hero"><div><span>PITCH QUALITY</span><h2>{qualityBand(player.pitchingPlus)}</h2><p>{diagnosis}</p></div><strong>{formatValue(player.pitchingPlus,"plus")}<small>総合投球指数+</small></strong></section><div className="quality-player-scores"><QualityScore label="球質指数+" metricKey="stuffPlus" value={player.stuffPlus}/><QualityScore label="コース指数+" metricKey="locationPlus" value={player.locationPlus}/></div><SectionTitle title="球種別 PITCH QUALITY"/><div className="quality-arsenal-grid">{arsenal.map((row)=><article key={row.pitchType}><header><span className="pitch-tag" style={{borderColor:PITCH_COLORS[row.pitchType]??"#777"}}>{row.pitchType}</span><b>n={row.pitches}・信頼度 {row.qualityConfidence??"—"}</b></header><QualityScore label="総合投球指数+" metricKey="pitchingPlus" value={row.pitchingPlus}/><div className="quality-sub-scores"><QualityScore label="球質指数+" metricKey="stuffPlus" value={row.stuffPlus}/><QualityScore label="コース指数+" metricKey="locationPlus" value={row.locationPlus}/></div><QualityFactors row={row}/></article>)}</div><details className="method-card chart-definition"><summary>このタブの値</summary><p>シーズン全体の球種モデルです。上部の期間・相手・カウントフィルターでは再計算されません。球種改良前後を比較する場合は、CSV更新後の値と実測の球速・変化量を併用してください。</p></details></div>;
+  return <div className="profile-body quality-player-panel"><section className="quality-player-hero"><div><span>PITCHスコア</span><h2>{qualityBand(player.pitchingPlus)}</h2><p>{diagnosis}</p></div><strong>{formatValue(player.pitchingPlus,"plus")}<small>総合投球指数+</small></strong></section><div className="quality-player-scores"><QualityScore label="球質指数+" metricKey="stuffPlus" value={player.stuffPlus}/><QualityScore label="コース指数+" metricKey="locationPlus" value={player.locationPlus}/></div><SectionTitle title="球種別 PITCHスコア"/><div className="quality-arsenal-grid">{arsenal.map((row)=><article key={row.pitchType}><header><span className="pitch-tag" style={{borderColor:PITCH_COLORS[row.pitchType]??"#777"}}>{row.pitchType}</span><b>n={row.pitches}・信頼度 {row.qualityConfidence??"—"}</b></header><QualityScore label="総合投球指数+" metricKey="pitchingPlus" value={row.pitchingPlus}/><div className="quality-sub-scores"><QualityScore label="球質指数+" metricKey="stuffPlus" value={row.stuffPlus}/><QualityScore label="コース指数+" metricKey="locationPlus" value={row.locationPlus}/></div><QualityFactors row={row}/></article>)}</div><details className="method-card chart-definition"><summary>このタブの値</summary><p>シーズン全体の球種モデルです。上部の期間・相手・カウントフィルターでは再計算されません。球種改良前後を比較する場合は、CSV更新後の値と実測の球速・変化量を併用してください。</p></details></div>;
 }
 
 function formatProfileMetric(metric: ProfileMetric | undefined) {
@@ -2752,5 +2748,5 @@ function EmptyState({ title, action }: { title: string; action: () => void }) {
 }
 
 function Footer({ navigate }: { navigate: (route: RouteState) => void }) {
-  return <footer><div><BrandMark /></div><div><h3>データ</h3><button onClick={() => navigate({ view: "search" })}>投球検索</button><button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button><button onClick={() => navigate({ view: "quality" })}>PITCH QUALITY</button><button onClick={() => navigate({ view: "spin" })}>回転アニメーション</button><button onClick={() => navigate({ view: "leaders", board: "pitching_percentile" })}>ランキング</button><button onClick={() => navigate({ view: "shift" })}>守備シフト</button><button onClick={() => navigate({ view: "glossary" })}>指標解説</button><button onClick={() => window.location.assign("/ai")}>AI向けデータ案内</button></div><div><h3>管理</h3><button onClick={() => window.location.assign("/admin")}>管理者ログイン</button><small>CSV更新は管理者のみ</small></div></footer>;
+  return <footer><div><BrandMark /></div><div><h3>データ</h3><button onClick={() => navigate({ view: "search" })}>投球検索</button><button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button><button onClick={() => navigate({ view: "quality" })}>PITCHスコア</button><button onClick={() => navigate({ view: "spin" })}>回転</button><button onClick={() => navigate({ view: "leaders", board: "pitching_percentile" })}>ランキング</button><button onClick={() => navigate({ view: "shift" })}>守備シフト</button><button onClick={() => navigate({ view: "glossary" })}>指標解説</button><button onClick={() => window.location.assign("/ai")}>AI向けデータ案内</button></div><div><h3>管理</h3><button onClick={() => window.location.assign("/admin")}>管理者ログイン</button><small>CSV更新は管理者のみ</small></div></footer>;
 }
