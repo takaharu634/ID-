@@ -8,7 +8,8 @@ import { PlayerOptions, comparePlayerNames } from './player-options';
 import { createPortal } from "react-dom";
 import { batterDisplayMinimum, displayedBatters, batterDisplayHighlights, isMeasuredFairBall } from "../lib/batter-display";
 import { type Row, type Dataset, type SeasonKey, SEASONS } from "../lib/dataset-types";
-import { loadStaticDataset, loadUploadedDataset, createLatestRequest, readPreference, savePreference } from "../lib/dataset-loader";
+import TohtoResearch from "./tohto-research";
+import { loadStaticDataset, loadBundledDataset, resetDatasetCache, createLatestRequest, readPreference, savePreference } from "../lib/dataset-loader";
 import { METRIC_INFO, METRIC_KEY_BY_LABEL, getMetricInfo, type MetricInfo } from "../lib/metric-definitions";
 import { printReport } from "./print-report";
 import LeagueComparison from "./league-comparison";
@@ -46,7 +47,7 @@ import {
   type Rating,
 } from "../lib/batter-profile";
 
-type ViewName = "umpires" | "home" | "games" | "search" | "visuals" | "barrel" | "compare" | "stats" | "leaders" | "quality" | "player" | "spin" | "shift" | "news" | "glossary";
+type ViewName = "research" | "umpires" | "home" | "games" | "search" | "visuals" | "barrel" | "compare" | "stats" | "leaders" | "quality" | "player" | "spin" | "shift" | "news" | "glossary";
 type RouteState = { view: ViewName; playerId?: string; board?: string };
 type NewsItem = {
   id: string; team: string; playerKanji?: string; playerRoman?: string; playerId?: string;
@@ -150,7 +151,7 @@ function readRoute(): RouteState {
   const view = (params.get("表示") ?? "home") as ViewName;
   const requestedBoard = params.get("指標") ?? undefined;
   return {
-    view: ["umpires", "home", "games", "search", "visuals", "barrel", "compare", "stats", "leaders", "quality", "player", "spin", "shift", "news", "glossary"].includes(view) ? view : "home",
+    view: ["research", "umpires", "home", "games", "search", "visuals", "barrel", "compare", "stats", "leaders", "quality", "player", "spin", "shift", "news", "glossary"].includes(view) ? view : "home",
     playerId: params.get("選手") ?? undefined,
     board: requestedBoard === "catching_throwing" ? "catching_pop" : requestedBoard,
   };
@@ -329,21 +330,16 @@ export default function SavantApp() {
     setLoadingSeason(targetSeason);
     setLoadError("");
     try {
-      // Uploaded data is dynamic and must not share the static-season cache.
-      // Try it first so an upload does not force downloading two complete datasets.
-      let selected: Dataset | null = null;
-      let notice = "";
-      if (targetSeason === "2026-spring") {
-        try {
-          selected = await loadUploadedDataset();
-        } catch (error) {
-          // Keep a previously loaded current dataset rather than replacing it after a network failure.
-          if (data && season === targetSeason) throw error;
-          notice = "最新データを確認できないため、同梱の2026年春季データを表示しています。接続後に再読み込みしてください。";
-        }
+      resetDatasetCache();
+      let selected: Dataset, notice = "";
+      try { selected = await loadStaticDataset<Dataset>(SEASONS[targetSeason].path); }
+      catch (error) {
+        // Preserve an already displayed current snapshot. On first/offline load,
+        // make the bundled fallback explicit instead of showing an empty site.
+        if (data && season === targetSeason) throw error;
+        selected = await loadBundledDataset<Dataset>(SEASONS[targetSeason].path);
+        notice = `最新データを確認できないため、同梱の${SEASONS[targetSeason].label}を表示しています。接続後に再読み込みしてください。`;
       }
-      if (!isCurrent()) return;
-      selected ??= await loadStaticDataset<Dataset>(SEASONS[targetSeason].path);
       if (!isCurrent()) return;
       setData(selected);
       setSeason(targetSeason);
@@ -433,13 +429,14 @@ export default function SavantApp() {
           if (!value) playUiSound("pop", false);
         }}
         season={loadingSeason ?? season}
-        onSeason={(value) => { setRoute({ view: route.view === "umpires" ? "umpires" : "home" }); loadDataset(value); }}
+        onSeason={(value) => { setRoute({ view: ["umpires","research"].includes(route.view) ? route.view : "home" }); loadDataset(value); }}
       />
       {(loadingSeason || loadError) && <div className="dataset-status" role="status" aria-live="polite">{loadingSeason ? `${SEASONS[loadingSeason].label}を読み込んでいます。現在の表示は${SEASONS[season].label}です。` : <>{loadError}<button type="button" onClick={() => loadDataset(requestedSeason.current)}>再読み込み</button></>}</div>}
       <TeamStrip teams={data.teams} season={season} onTeam={() => navigate({ view: "stats" })} />
       {menuOpen && <MenuOverlay close={() => setMenuOpen(false)} navigate={navigate} data={data} />}
 
       <main className="page-wrap"><Suspense fallback={<div className="loading-panel" role="status">分析画面を準備しています…</div>}>
+        {route.view === "research" && <TohtoResearch key={season} data={data} season={season} />}
         {route.view === "home" && <HomeView data={data} navigate={navigate} />}
         {route.view === "umpires" && <UmpireAnalysis key={season} data={data} />}
         {route.view === "games" && <GamesView data={data} />}
@@ -511,6 +508,7 @@ function Header({ searchText, setSearchText, suggestions, onPlayer, navigate, on
         <button onClick={() => navigate({ view: "quality" })}>PITCH QUALITY</button>
         <button onClick={() => navigate({ view: "spin" })}>回転アニメーション</button>
         <button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button>
+        <button onClick={() => navigate({ view: "research" })}>東都独自研究</button>
         <button onClick={() => navigate({ view: "umpires" })}>審判分析</button>
         <button onClick={() => navigate({ view: "shift" })}>SHIFT</button>
         <button onClick={() => navigate({ view: "news" })}>NEWS</button>
@@ -552,7 +550,8 @@ function MenuOverlay({ close, navigate, data }: { close: () => void; navigate: (
           <button onClick={() => navigate({ view: "quality" })}>PITCH QUALITY / 投球品質</button>
           <button onClick={() => navigate({ view: "spin" })}>回転アニメーション / SPIN LAB</button>
           <button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button>
-          <button onClick={() => navigate({ view: "umpires" })}>審判分析</button>
+          <button onClick={() => navigate({ view: "research" })}>東都独自研究</button>
+        <button onClick={() => navigate({ view: "umpires" })}>審判分析</button>
         <button onClick={() => navigate({ view: "shift" })}>SHIFT / 守備配置</button>
           <button onClick={() => navigate({ view: "news" })}>NEWS / TRAINING WATCH</button>
         </div>

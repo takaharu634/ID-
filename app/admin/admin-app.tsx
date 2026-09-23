@@ -1,185 +1,71 @@
 "use client";
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { SEASONS, type SeasonKey } from '../../lib/dataset-types';
+import { loadStaticDataset, resetDatasetCache } from '../../lib/dataset-loader';
 
-import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
-import { playUiSound } from "../ui-sound";
-
-type Metadata = {
-  season: string;
-  sourceName: string;
-  pitches: number;
-  games: number;
-  teams: number;
-  battedBalls: number;
-};
-
-type Dataset = {
-  metadata: Metadata;
-};
-
-type ImportRow = {
-  id: string;
-  fileName: string;
-  uploadedAt: string;
-  pitchCount: number;
-  isActive: boolean;
-};
-
-type UploadStatus = {
-  kind: "idle" | "working" | "success" | "error";
-  message: string;
-};
-
-export default function AdminApp({ displayName }: { displayName: string }) {
-  const [data, setData] = useState<Dataset | null>(null);
-  const [season, setSeason] = useState("2026年秋季");
-  const [file, setFile] = useState<File | null>(null);
-  const [fileInputKey, setFileInputKey] = useState(0);
-  const [imports, setImports] = useState<ImportRow[]>([]);
-  const [loadError, setLoadError] = useState("");
-  const [status, setStatus] = useState<UploadStatus>({ kind: "idle", message: "" });
-  const [muted, setMuted] = useState(false);
-
-  async function loadDataset() {
-    const initialResponse = await fetch("/data/initial-data.json");
-    if (!initialResponse.ok) throw new Error("初期データを読み込めませんでした。");
-    let selected = await initialResponse.json() as Dataset;
-    const currentResponse = await fetch("/api/dataset", { cache: "no-store" });
-    if (currentResponse.ok && currentResponse.status !== 204) {
-      selected = await currentResponse.json() as Dataset;
-    }
-    setData(selected);
-    setSeason((current) => current === "2026年秋季" ? selected.metadata.season : current);
+type Report = {inputRows:number;addedRows:number;duplicates:number;totalRows:number;recoveredDates:number;pitchCorrections?:number;ruleVersion:string;existingWarnings?:{message:string;count:number}[];warnings:{message:string;count:number}[]};
+type Prepared = {id?:string;unchanged?:boolean;season:SeasonKey;report:Report};
+type ImportRow = {id:string;season:SeasonKey;fileName:string;uploadedAt:string;pitchCount:number;isActive:boolean;expectedActive:string};
+type Meta = {season:string;pitches:number;games:number;teams:number;sourceName:string};
+async function action(body: object) {
+  const response = await fetch('/api/upload',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  const value = await response.json(); if (!response.ok) throw new Error(value.error || '反映に失敗しました。'); return value;
+}
+export default function AdminApp({displayName}:{displayName:string}) {
+  const [season,setSeason] = useState<SeasonKey>('2026-fall');
+  const [meta,setMeta] = useState<Meta|null>(null), [imports,setImports] = useState<ImportRow[]>([]);
+  const [file,setFile] = useState<File|null>(null), [prepared,setPrepared] = useState<Prepared|null>(null);
+  const [busy,setBusy] = useState(false), [message,setMessage] = useState(''), [error,setError] = useState('');
+  const worker = useRef<Worker|null>(null), refreshGeneration = useRef(0);
+  async function refresh(target = season) {
+    const generation = ++refreshGeneration.current;
+    resetDatasetCache();
+    const [dataset,response] = await Promise.all([loadStaticDataset<{metadata:Meta}>(SEASONS[target].path),fetch('/api/imports',{cache:'no-store'})]);
+    const result = await response.json(); if (!response.ok) throw new Error(result.error);
+    if (generation !== refreshGeneration.current) return;
+    setMeta(dataset.metadata);setImports(result.imports);
   }
-
-  async function loadImports() {
-    const response = await fetch("/api/imports", { cache: "no-store" });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error ?? "追加履歴を読み込めませんでした。");
-    setImports(result.imports ?? []);
+  useEffect(()=>{setMeta(null); refresh(season).catch(e=>setError(e.message));},[season]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>()=>worker.current?.terminate(),[]);
+  async function commit(value: Prepared, acknowledgeWarnings: boolean) {
+    if (!value.id) return;
+    setBusy(true);setError('');setMessage('保存内容を照合して反映しています。');
+    try { const result=await action({action:'commit',id:value.id,acknowledgeWarnings});setMessage(result.message);setPrepared(null);setSeason(value.season);await refresh(value.season); }
+    catch(e) {setError(e instanceof Error ? e.message : '反映に失敗しました。');setMessage('');}
+    finally {setBusy(false);}
   }
-
-  async function refresh() {
-    try {
-      await Promise.all([loadDataset(), loadImports()]);
-      setLoadError("");
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "管理データを読み込めませんでした。");
-    }
-  }
-
-  useEffect(() => {
-    refresh();
-    setMuted(window.localStorage.getItem("tohto-savant-muted") === "true");
-  }, []);
-
   async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!file) {
-      setStatus({ kind: "error", message: "CSVファイルを選択してください。" });
-      return;
-    }
-
-    setStatus({ kind: "working", message: "CSVを検証し、指標を再計算しています。" });
-    const form = new FormData();
-    form.set("file", file);
-    form.set("season", season);
-
+    event.preventDefault(); if (!file || busy) return;
+    setBusy(true);setError('');setPrepared(null);setMessage('シーズン・重複・異常値を検証し、復元用データを保存しています。画面を開いたままお待ちください。');
     try {
-      const response = await fetch("/api/upload", { method: "POST", body: form });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "追加に失敗しました。");
-      setStatus({ kind: "success", message: result.message });
-      playUiSound("success", muted);
-      setFile(null);
-      setFileInputKey((current) => current + 1);
-      await refresh();
-    } catch (error) {
-      setStatus({ kind: "error", message: error instanceof Error ? error.message : "追加に失敗しました。" });
-    }
+      worker.current?.terminate();
+      const job = new Worker(new URL('./import-worker.ts',import.meta.url),{type:'module'});worker.current=job;
+      const value = await new Promise<Prepared>((resolve,reject)=>{
+        job.onmessage=e=>e.data.error?reject(new Error(e.data.error)):resolve(e.data.result);
+        job.onerror=()=>reject(new Error('検証処理が中断しました。PCで再実行するか、CSVを試合ごとに分けてください。現在の公開データは維持しています。'));
+        job.postMessage(file);
+      });
+      job.terminate();worker.current=null;setPrepared(value);
+      if (value.unchanged) {setMessage(`追加対象はありません。${value.report.duplicates.toLocaleString()}球の重複を確認しました。`);setBusy(false);}
+      else if (value.report.warnings.length) {setMessage('確認が必要な項目があります。まだ公開データには反映していません。');setBusy(false);}
+      else await commit(value,false);
+    } catch(e) {worker.current?.terminate();worker.current=null;setError(e instanceof Error?e.message:'検証に失敗しました。');setMessage('');setBusy(false);}
   }
-
-  return (
-    <div className="site-shell">
-      <header className="admin-simple-header">
-        <Link className="admin-brand-link" href="/">ID東都</Link>
-        <div className="admin-account">
-          <button className="sound-button" onClick={() => { const next=!muted; setMuted(next); window.localStorage.setItem("tohto-savant-muted",String(next)); if (!next) playUiSound("pop", false); }} aria-label={muted?"効果音をオンにする":"効果音をオフにする"}>{muted?"🔇":"🔊"}</button>
-          <span>{displayName}</span>
-          <a href="/signout-with-chatgpt?return_to=%2F">サインアウト</a>
-        </div>
-      </header>
-
-      <main className="page-wrap">
-        <section className="page-section">
-          <header className="page-heading">
-            <p>管理者限定</p>
-            <h1>CSVデータ管理</h1>
-            <span>TrackManのCSVを追加すると、重複除去・球種統合・全指標の再計算を行い、公開サイトへ反映します。</span>
-          </header>
-
-          {loadError && <p className="upload-status error">{loadError}</p>}
-
-          <div className="admin-grid">
-            <form className="upload-card" onSubmit={submit}>
-              <h2>新しいデータを追加</h2>
-              <label>
-                大会・期間名
-                <input value={season} onChange={(event) => setSeason(event.target.value)} placeholder="例：2026年秋季" />
-              </label>
-              <label className="drop-zone">
-                <input key={fileInputKey} type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-                <span className="upload-icon">↑</span>
-                <strong>{file ? file.name : "CSVを選択"}</strong>
-                <small>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : "最大30MB・TrackMan CSV形式"}</small>
-              </label>
-              <button className="primary-button" type="submit" disabled={status.kind === "working"}>
-                {status.kind === "working" ? "計算中…" : "検証して反映"}
-              </button>
-              {status.message && <p className={`upload-status ${status.kind}`}>{status.message}</p>}
-            </form>
-
-            <div className="current-data-card">
-              <h2>現在公開中</h2>
-              {data ? (
-                <>
-                  <strong>{data.metadata.season}</strong>
-                  <p>{data.metadata.sourceName}</p>
-                  <dl>
-                    <div><dt>投球</dt><dd>{data.metadata.pitches.toLocaleString("ja-JP")}</dd></div>
-                    <div><dt>試合</dt><dd>{data.metadata.games}</dd></div>
-                    <div><dt>大学</dt><dd>{data.metadata.teams}</dd></div>
-                    <div><dt>打球</dt><dd>{data.metadata.battedBalls.toLocaleString("ja-JP")}</dd></div>
-                  </dl>
-                  <a className="secondary-button download-link" href="/api/dataset?format=csv">現在のCSVを保存</a>
-                </>
-              ) : <p>データを読み込んでいます。</p>}
-            </div>
-          </div>
-
-          <section className="import-history">
-            <h2>追加履歴</h2>
-            {imports.length ? imports.map((row) => (
-              <div key={row.id}>
-                <span className={row.isActive ? "active-file" : ""}>{row.isActive ? "公開中" : "保存済"}</span>
-                <strong>{row.fileName}</strong>
-                <small>{new Date(row.uploadedAt).toLocaleString("ja-JP")}・{row.pitchCount.toLocaleString("ja-JP")}球</small>
-              </div>
-            )) : <p>追加履歴はまだありません。初期データはサイトに同梱されています。</p>}
-          </section>
-
-          <div className="method-card">
-            <h3>CSV反映ルール</h3>
-            <ul>
-              <li>球種は手入力値を優先し、「不明」のみ自動判定値で補完します。</li>
-              <li>立正大学のコード「TAI_UNI」と「RIS_UNI」は同じ大学として統合します。</li>
-              <li>球質指数+などは追加後の全データを基準100として再標準化します。</li>
-              <li>TrackManにないバット速度、走者速度、守備範囲の項目は表示しません。</li>
-            </ul>
-          </div>
-        </section>
-      </main>
-    </div>
-  );
+  async function restore(row:ImportRow) {
+    if (!window.confirm(`${SEASONS[row.season].label}を「${row.fileName}」${row.pitchCount.toLocaleString()}球の保存版へ戻しますか？現在の保存版も履歴に残ります。`)) return;
+    setBusy(true);setError('');setMessage('保存版を照合して復元しています。');
+    try {await action({action:'restore',season:row.season,id:row.id,expectedActive:row.expectedActive});setSeason(row.season);await refresh(row.season);setMessage('選択した保存版へ戻しました。');}
+    catch(e) {setError(e instanceof Error?e.message:'復元に失敗しました。');setMessage('');}
+    finally {setBusy(false);}
+  }
+  return <div className="site-shell"><header className="admin-simple-header"><Link className="admin-brand-link" href="/">ID東都</Link><div className="admin-account"><span>{displayName}</span><a href="/signout-with-chatgpt?return_to=%2F">サインアウト</a></div></header>
+    <main className="page-wrap"><section className="page-section"><header className="page-heading"><p>管理者限定</p><h1>CSVデータ管理</h1><span>CSVを追加すると日付からシーズンを判定。検証・重複除去・名寄せ・球種補正・バックアップを行います。</span></header>
+    {error && <p className="upload-status error" role="alert">{error}</p>}{message && <p className="upload-status" role="status">{message}</p>}
+    <div className="admin-grid"><form className="upload-card" onSubmit={submit}><h2>新しいデータを追加</h2><p>問題のないCSVは自動反映。異常の可能性がある値は確認後に反映します。</p><label className="drop-zone"><input type="file" accept=".csv,text/csv" disabled={busy} onChange={e=>{setFile(e.target.files?.[0]??null);setPrepared(null);}}/><span className="upload-icon">↑</span><strong>{file?.name || 'TrackMan CSVを選択'}</strong><small>UTF-8・最大30MB・1シーズン25,000球まで</small></label><button className="primary-button" disabled={busy || !file}>{busy?'処理中…':'検証して反映'}</button>
+    {prepared && <section className="import-report"><h3>{SEASONS[prepared.season].label}の検証結果</h3><dl><div><dt>新規</dt><dd>{prepared.report.addedRows.toLocaleString()}球</dd></div><div><dt>重複</dt><dd>{prepared.report.duplicates.toLocaleString()}球</dd></div><div><dt>統合後</dt><dd>{prepared.report.totalRows.toLocaleString()}球</dd></div></dl><p>同一試合から日付を補完：{prepared.report.recoveredDates}球。球種補正：{prepared.report.pitchCorrections ?? '—'}球。</p>{prepared.report.warnings.length>0 && <ul>{prepared.report.warnings.map(w=><li key={w.message}>{w.message}（{w.count}件）</li>)}</ul>}{Boolean(prepared.report.existingWarnings?.length) && <details><summary>以前から含まれる測定欠損など</summary><ul>{prepared.report.existingWarnings?.map(w=><li key={w.message}>{w.message}（{w.count}件）</li>)}</ul></details>}{prepared.id && <button type="button" className="primary-button" disabled={busy} onClick={()=>commit(prepared,true)}>内容を確認して反映</button>}</section>}
+    </form><div className="current-data-card"><h2>現在の表示データ</h2><label>シーズン<select aria-label="管理シーズン" disabled={busy} value={season} onChange={e=>setSeason(e.target.value as SeasonKey)}>{Object.entries(SEASONS).map(([key,v])=><option key={key} value={key}>{v.label}</option>)}</select></label>{meta?<><strong>{meta.season}</strong><dl><div><dt>投球</dt><dd>{meta.pitches.toLocaleString()}</dd></div><div><dt>試合</dt><dd>{meta.games}</dd></div><div><dt>大学</dt><dd>{meta.teams}</dd></div></dl><a className="secondary-button download-link" href={`/api/dataset?season=${season}&format=csv`}>現在のCSVを保存</a><p><Link href="/">分析画面を開く</Link></p></>:<p>読み込み中…</p>}</div></div>
+    <section className="import-history"><h2>バックアップ・復元</h2><p>更新前と更新後を保存します。復元しても新しい版は削除されません。</p>{imports.filter(r=>r.season===season).map(row=><div key={row.id}><span className={row.isActive?'active-file':''}>{row.isActive?'反映中':'保存済'}</span><strong>{row.fileName}</strong><small>{new Date(row.uploadedAt).toLocaleString('ja-JP')} · {row.pitchCount.toLocaleString()}球</small><a href={`/api/dataset?season=${row.season}&format=csv&version=${row.id}`}>CSV保存</a><button type="button" className="secondary-button" disabled={busy || row.isActive} onClick={()=>restore(row)}>この版へ戻す</button></div>)}{!imports.some(r=>r.season===season)&&<p>更新履歴はまだありません。初回更新時に同梱データも保存します。</p>}</section>
+    <details className="method-card"><summary>取り込みルール</summary><ul><li>同じ投球ID・同じ内容は1球に統合。同じIDで内容が違う場合は停止します。</li><li>選手名は所属大学と登録済みの対応表で統一。未登録選手は推測で漢字へ変換しません。</li><li>手入力球種を優先し、不明値を自動判定で補完。真っすぐ系の球速基準と登録済みの投手別ルールを適用します。</li><li>日付・必須列・測定値・保存内容を検証。対応シーズンは2025秋、2026春、2026秋です。</li><li>検証結果の有効期限は1時間。別の更新が入った場合は再検証します。</li></ul></details>
+    </section></main></div>;
 }

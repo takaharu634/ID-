@@ -39,3 +39,14 @@ test('NEWS renders the verified Toyo report with separate fact and analysis', as
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('latest NEWS links the verified Aoyama player master and remains unique', async () => {
+  const feed = JSON.parse(await readFile('public/data/news_feed.json', 'utf8'));
+  const item = feed.find(row => row.id === 'aoyama-morisawa-first-official-homer-2026-09-22');
+  assert.ok(item);
+  assert.equal(item.publishedAt, '2026-09-22');
+  assert.equal(item.playerKanji, '森澤 拓海');
+  assert.equal(item.playerId, 'id:1000325040|青山学院大学');
+  assert.equal(item.sourceUrl, 'https://aoyamasports.conohawing.com/?p=12520');
+  assert.equal(feed.filter(row => row.sourceUrl === item.sourceUrl).length, 1);
+});

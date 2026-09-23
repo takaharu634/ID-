@@ -69,3 +69,10 @@ test('late season success and failure cannot overwrite the most recent selection
   latest.cancel();
   assert.equal(fall(), false);
 });
+
+test('every current season and spin request checks its own active snapshot; errors never hide behind static fallback',async()=>{
+ const urls:string[]=[];const load=createDatasetLoader(async url=>{urls.push(String(url));return Response.json({current:true});},true);
+ for(const kind of ['season','spin'])for(const season of ['2025-fall','2026-spring','2026-fall'])await load(`/data/${kind}-${season}.json`);
+ assert.equal(urls.length,6);assert.ok(urls.every(u=>u.startsWith('/api/dataset?season=')));assert.equal(urls.filter(u=>u.endsWith('format=spin')).length,3);
+ const fail=createDatasetLoader(async()=>new Response('failed',{status:503}),true);await assert.rejects(fail('/data/season-2026-fall.json'),/最新データ/);
+});

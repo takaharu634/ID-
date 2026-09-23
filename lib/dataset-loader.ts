@@ -16,7 +16,7 @@ export async function loadUploadedDataset(fetcher: typeof fetch = fetch): Promis
 }
 
 /** One shared request and parsed object per static dataset, across all views. */
-export function createDatasetLoader(fetcher: typeof fetch = fetch) {
+export function createDatasetLoader(fetcher: typeof fetch = fetch, current = false) {
   const cache = new Map<string, Promise<unknown>>();
   async function request(url: string) {
     const response = await fetcher(url, { cache: 'no-cache', signal: AbortSignal.timeout(20000) });
@@ -27,6 +27,14 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch) {
     const existing = cache.get(url);
     if (existing) return existing as Promise<T>;
     const pending = (async () => {
+      const match = /^\/data\/(season|spin)-(2025-fall|2026-spring|2026-fall)\.json$/.exec(url);
+      if (current && match) {
+        const response = await fetcher(`/api/dataset?season=${match[2]}&format=${match[1] === 'spin' ? 'spin' : 'json'}`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+        if (response.status !== 204) {
+          if (!response.ok) throw new Error('最新データを確認できませんでした。再読み込みしてください。');
+          return response.json();
+        }
+      }
       if (/^\/data\/(season-|spin-).+\.json$/.test(url)) {
         try { return unpackDataset(await request(url.replace('/data/', '/data/compact/'))); }
         catch { /* Old publications and offline caches still have the original JSON. */ }
@@ -38,7 +46,11 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch) {
   };
 }
 
-export const loadStaticDataset = createDatasetLoader();
+// All views, including historical comparisons and spin, share the same current snapshot.
+let currentLoader = createDatasetLoader(fetch, true);
+export const loadBundledDataset = createDatasetLoader();
+export function resetDatasetCache() { currentLoader = createDatasetLoader(fetch, true); }
+export function loadStaticDataset<T>(url: string): Promise<T> { return currentLoader<T>(url); }
 
 /** Ignore older successes and failures without aborting another view's shared request. */
 export function createLatestRequest() {

@@ -14,20 +14,26 @@ type StorageEnv = { BUCKET?: R2Bucket };
 
 export const jsonHeaders = {
   "access-control-allow-origin": "*",
-  "cache-control": "public, max-age=300, s-maxage=900",
+  "cache-control": "no-store",
   "content-language": "ja",
 };
 
 export async function loadPublicDataset(request: Request): Promise<PublicDataset> {
-  try {
-    const { env } = await import("cloudflare:workers");
-    const bucket = (env as unknown as StorageEnv).BUCKET;
-    const current = bucket ? await bucket.get("datasets/current.json") : null;
+  let runtime: StorageEnv = {};
+  try { const {env}=await import("cloudflare:workers"); runtime=env as unknown as StorageEnv; }
+  catch(error) { if ((error as {code?:string}).code !== 'ERR_UNSUPPORTED_ESM_URL_SCHEME') throw error; }
+  const { activeObject } = await import("../../../server/import-store.mjs");
+  const { SUPPORTED_SEASONS, seasonLabel } = await import("../../../lib/import-validation.mjs");
+  const season = new URL(request.url).searchParams.get("season") || "2026-spring";
+  if (!SUPPORTED_SEASONS.includes(season)) throw new Error("シーズンが不正です。");
+  const bucket = runtime.BUCKET;
+  if (bucket) {
+    const current = await activeObject(bucket,season);
     if (current) return await current.json() as PublicDataset;
-  } catch {
-    // Local builds do not expose Cloudflare bindings. Use the bundled public dataset.
+    const legacy = await bucket.get("datasets/current.json");
+    if (legacy) { const value = await legacy.json() as PublicDataset; if (value.metadata?.season === seasonLabel(season)) return value; }
   }
-  const response = await fetch(new URL("/data/initial-data.json", request.url), { cache: "no-store" });
+  const response = await fetch(new URL(`/data/season-${season}.json`, request.url), { cache: "no-store" });
   if (!response.ok) throw new Error("公開データを読み込めませんでした。");
   return await response.json() as PublicDataset;
 }
