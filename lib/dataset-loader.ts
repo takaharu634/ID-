@@ -1,7 +1,7 @@
 import { applyPitchQuality } from './pitch-quality.mjs';
 import { unpackDataset } from './dataset-transport.js';
 import type { Dataset } from './dataset-types';
-import { publicOfflineStore, publicDataHash, validatePublicPair } from './public-offline.mjs';
+import { publicOfflineStore, publicDataHash, validatePublicPair, validatePublicSummary, validatePublicSpin } from './public-offline.mjs';
 import { setSavedPublicDataNotice } from './public-data-notice.ts';
 import { repairLegacyAggregates } from './repair-legacy-aggregates.ts';
 
@@ -49,12 +49,26 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch, current = fal
       if (!summaryResponse.ok) throw new Error('最新データを確認できませんでした。再読み込みしてください。');
       const version = summaryResponse.headers.get('x-dataset-version');
       // Keep old publications usable, but do not save responses without a proven public identity.
-      if (!version) return summaryResponse.status === 204 ? null : { summary: normalize(await summaryResponse.json()), legacy: true };
+      if (!version) {
+        if (summaryResponse.status === 204) return null;
+        const summary = await summaryResponse.json();
+        validatePublicPair(season, summary, []);
+        setSavedPublicDataNotice(season, null);
+        return { summary: normalize(summary), legacy: true };
+      }
       if (summaryResponse.headers.get('x-dataset-season') !== season) throw new Error('取得したデータのシーズンが一致しません。');
-      if (version.startsWith('legacy:')) return { summary: normalize(await summaryResponse.json()), legacy: true };
+      if (version.startsWith('legacy:')) {
+        const summary = await summaryResponse.json();
+        validatePublicPair(season, summary, []);
+        setSavedPublicDataNotice(season, null);
+        return { summary: normalize(summary), legacy: true };
+      }
       const spinResponse = await fetcher(`/api/dataset?season=${season}&format=spin`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
       if (!spinResponse.ok) throw new Error('最新の回転データを確認できませんでした。');
-      if (spinResponse.headers.get('x-dataset-version') !== version || spinResponse.headers.get('x-dataset-season') !== season || spinResponse.status !== summaryResponse.status) continue;
+      if (spinResponse.headers.get('x-dataset-version') !== version || spinResponse.headers.get('x-dataset-season') !== season || spinResponse.status !== summaryResponse.status) {
+        await Promise.allSettled([summaryResponse.body?.cancel(), spinResponse.body?.cancel()]);
+        continue;
+      }
       let summary, spin;
       if (summaryResponse.status === 204) {
         const bundled = /^bundled:([a-f0-9]{64}):([a-f0-9]{64})$/.exec(version);
@@ -88,21 +102,23 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch, current = fal
     if (existing) return existing as Promise<T>;
     const pending = (async () => {
       const match = /^\/data\/(season|spin)-([1-9]\d{3}-(?:spring|fall))\.json$/.exec(url);
+      const validate = (value: unknown) => {
+        if (match) (match[1] === 'season' ? validatePublicSummary : validatePublicSpin)(match[2], value);
+        return normalize(value);
+      };
       if (current && match) {
         const pair = await currentPair(match[2]);
         if (pair) {
           if (match[1] === 'season') return pair.summary;
           if (!pair.legacy) return pair.spin;
-          const response = await fetcher(`/api/dataset?season=${match[2]}&format=spin`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
-          if (!response.ok || response.status === 204) throw new Error('最新の回転データを確認できませんでした。');
-          return await response.json();
+          throw new Error('この旧公開版では回転データとの一致を確認できません。再読み込みしてください。');
         }
       }
       if (/^\/data\/(season-|spin-).+\.json$/.test(url)) {
-        try { return normalize(unpackDataset(await request(url.replace('/data/', '/data/compact/')))); }
+        try { return validate(unpackDataset(await request(url.replace('/data/', '/data/compact/')))); }
         catch { /* Old publications and offline caches still have the original JSON. */ }
       }
-      return normalize(await request(url));
+      return validate(await request(url));
     })().catch(error => { cache.delete(url); throw error; });
     cache.set(url, pending);
     // Retain only the active comparison window; old years remain in durable storage.

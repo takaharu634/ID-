@@ -1,0 +1,89 @@
+name: ID Tohto daily data backup
+on:
+  schedule:
+    - cron: '17 18 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backup-datasets.yml'
+      - 'tools/backup/**'
+      - 'server/backup-*.mjs'
+      - 'app/api/backup/**'
+permissions:
+  contents: read
+concurrency:
+  group: id-tohto-data-backup
+  cancel-in-progress: false
+jobs:
+  backup:
+    if: github.repository_id == '1380720373' && github.repository_owner_id == '319011362' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      BACKUP_SITE_ORIGIN: ${{ vars.BACKUP_SITE_ORIGIN || 'https://tohto-baseball-savant.nbdn87qjxf.chatgpt.site' }}
+      BACKUP_OIDC_AUDIENCE: ${{ vars.BACKUP_OIDC_AUDIENCE || 'https://tohto-baseball-savant.nbdn87qjxf.chatgpt.site/api/backup/export' }}
+      BACKUP_R2_WARN_BYTES: ${{ vars.BACKUP_R2_WARN_BYTES || '1073741824' }}
+      BACKUP_ARTIFACT_WARN_BYTES: ${{ vars.BACKUP_ARTIFACT_WARN_BYTES || '209715200' }}
+      BACKUP_RETAINED_WARN_BYTES: ${{ vars.BACKUP_RETAINED_WARN_BYTES || '419430400' }}
+      BACKUP_RETENTION_DAYS: ${{ vars.BACKUP_RETENTION_DAYS || '30' }}
+      BACKUP_OUTPUT: backup-current
+      BACKUP_PREVIOUS: backup-previous
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Find a previous independent backup for bandwidth reuse
+        id: previous
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {data} = await github.rest.actions.listWorkflowRuns({...context.repo, workflow_id:'backup-datasets.yml', branch:'main', status:'success', per_page:5});
+            const run=data.workflow_runs.find(r=>r.head_branch==='main' && String(r.head_repository?.id)==='1380720373' && ['schedule','push','workflow_dispatch'].includes(r.event));
+            if(run){
+              const {data:items}=await github.rest.actions.listWorkflowRunArtifacts({...context.repo,run_id:run.id,per_page:100});
+              const artifact=items.artifacts.find(a=>!a.expired && a.name.startsWith(`id-tohto-data-${run.id}-`));
+              if(artifact){core.setOutput('id',String(artifact.id));core.setOutput('run',String(run.id));}
+            }
+      - name: Download optional reuse source
+        if: steps.previous.outputs.id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.previous.outputs.id }}
+          run-id: ${{ steps.previous.outputs.run }}
+          github-token: ${{ github.token }}
+          path: backup-previous
+          merge-multiple: true
+      - name: Capture, checksum and independently restore-verify
+        id: capture
+        run: node tools/backup/run.mjs
+      - name: Save complete independent artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: id-tohto-data-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.capture.outputs.archive }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: ${{ env.BACKUP_RETENTION_DAYS }}
+      - name: Check retained artifact budget and surface alerts
+        if: success()
+        uses: actions/github-script@v7
+        env:
+          CAPTURE_WARNINGS: ${{ steps.capture.outputs.warnings }}
+        with:
+          script: |
+            let bytes=0, count=0;
+            for await (const response of github.paginate.iterator(github.rest.actions.listArtifactsForRepo,{...context.repo,per_page:100})) {
+              for (const artifact of response.data) if (!artifact.expired) { bytes+=artifact.size_in_bytes; count++; }
+            }
+            const budget=Number(process.env.BACKUP_RETAINED_WARN_BYTES);
+            if (!Number.isSafeInteger(budget)||budget<=0) throw new Error('Invalid retained artifact warning budget');
+            await core.summary.addRaw(`\nGitHub retained artifacts: ${count}, ${bytes} bytes. Warning budget: ${budget} bytes (not the account quota).\n`).write();
+            if (bytes>budget || Number(process.env.CAPTURE_WARNINGS)>0) core.setFailed('バックアップは保存済みです。容量警告を確認してください。契約上限・保持日数・保存先の見直しが必要です。');

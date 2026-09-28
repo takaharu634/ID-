@@ -17,7 +17,7 @@ export function setSavedPublicDataNotice(season: string, savedAt: number | null)
 }
 export function setSavedCatalogNotice(saved: boolean) {
   if (!!catalogNotice === saved) return;
-  catalogNotice = saved ? { message: '通信できないため、端末に保存済みのシーズン一覧を表示しています。' } : null;
+  catalogNotice = saved ? { message: '最新のシーズン一覧を確認できないため、取得済みの一覧を表示しています。' } : null;
   notify();
 }
 export function hasSavedPublicDataNotice(season?: string) { return !!catalogNotice || (season ? notices.has(season) : notices.size > 0); }

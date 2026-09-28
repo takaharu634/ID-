@@ -24,6 +24,9 @@ export async function refreshSeasonCatalog(): Promise<Catalog> {
       await publicOfflineStore.saveCatalog(data);
       setSavedCatalogNotice(false);
     } catch (error) {
+      // A failed disk write must not roll back a newer catalog already obtained
+      // in this session. Disk is a startup fallback, not an authority over memory.
+      if (state !== initial) { setSavedCatalogNotice(true); return state; }
       data = await publicOfflineStore.readCatalog();
       if (!data) throw error;
       setSavedCatalogNotice(true);
