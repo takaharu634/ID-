@@ -12,7 +12,7 @@ export async function storagePage(bucket, { cursor = null, limit = 200 } = {}) {
   if (!safeNumber(limit, 1) || limit > 1000) throw new Error('Inventory limit must be 1-1000');
   if (cursor !== null && (typeof cursor !== 'string' || !cursor || cursor.length > 8192)) throw new Error('Invalid inventory cursor');
   const page = await bucket.list({ prefix: 'datasets/', limit, ...(cursor ? { cursor } : {}) });
-  if (!Array.isArray(page.objects) || page.objects.length > limit) throw new Error('Invalid storage inventory');
+  if (!Array.isArray(page.objects) || page.objects.length > limit || typeof page.truncated !== 'boolean') throw new Error('Invalid storage inventory');
   if (page.truncated && (typeof page.cursor !== 'string' || !page.cursor || page.cursor === cursor)) throw new Error('Storage pagination did not advance');
   const groups = { heads: { bytes: 0, objects: 0 }, snapshots: { bytes: 0, objects: 0 }, staged: { bytes: 0, objects: 0 }, other: { bytes: 0, objects: 0 } };
   let bytes = 0;

@@ -1,0 +1,16 @@
+{
+  "sourceFile": "2026春季リーグ戦_統合_重複除去_2試合補充.csv",
+  "sourceBytes": 13132255,
+  "restoredBytes": 13132255,
+  "byteForByteEqual": true,
+  "sourceSha256": "fbc28ce8abc5c8e8e499f20b31f44de6a8eff00edb436091161ab74feb6b37ff",
+  "restoredSha256": "fbc28ce8abc5c8e8e499f20b31f44de6a8eff00edb436091161ab74feb6b37ff",
+  "archiveBytesIncludingIndex": 3710611,
+  "compressedObjectBytes": 3706922,
+  "archiveFraction": 0.2825570322842497,
+  "manifestSha256": "3e27f33a2c761ac6c89ce6698722c4e69e83869cefac3b5c7561d8e07ce143ec",
+  "testedNodeVersion": "22.16.0",
+  "unitTestsPassed": 27,
+  "productionDeployed": false,
+  "wholeApplicationBuildTested": false
+}
