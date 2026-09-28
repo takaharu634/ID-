@@ -1,10 +1,24 @@
-const CACHE_VERSION = 'tohto-savant-offline-v7';
+const CACHE_VERSION = 'tohto-savant-offline-v8';
 const APP_CACHE = `${CACHE_VERSION}-app`;
 // Keep existing offline datasets when refreshing the app name.
 const DATA_CACHE = 'tohto-savant-offline-v5-data';
 const CORE_FILES = ['/', '/manifest.webmanifest', '/favicon.svg'];
 const ASSET = /\.(?:js|css|svg|png|jpg|jpeg|webp|woff2?)$/i;
 const PRIVATE_PATH = /^\/(?:admin|api|signin-with-chatgpt|signout-with-chatgpt|callback)(?:\/|$)/;
+
+async function cachedResponse(request) {
+  try { return await caches.match(request); }
+  catch { return undefined; }
+}
+async function saveAppResponse(request, response) {
+  try {
+    const cache = await caches.open(APP_CACHE);
+    await cache.put(request, response.clone());
+    const keys = await cache.keys();
+    const removable = keys.filter(key => !CORE_FILES.includes(new URL(key.url).pathname));
+    for (const key of removable.slice(0, Math.max(0, keys.length - 128))) await cache.delete(key);
+  } catch { /* Browser storage restrictions must not hide a successful response. */ }
+}
 
 async function cacheAppShell() {
   const cache = await caches.open(APP_CACHE);
@@ -59,9 +73,9 @@ self.addEventListener('fetch', event => {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
-        if (response.ok) await (await caches.open(APP_CACHE)).put('/', response.clone());
+        if (response.ok) await saveAppResponse('/', response);
         return response;
-      } catch { return (await caches.match('/')) || Response.error(); }
+      } catch { return (await cachedResponse('/')) || Response.error(); }
     })());
     return;
   }
@@ -69,19 +83,19 @@ self.addEventListener('fetch', event => {
   if (url.pathname.startsWith('/data/') && url.pathname.endsWith('.json')) {
     const refresh = fetch(request).then(async response => {
       if (response.ok && response.headers.get('content-type')?.includes('json')) {
-        const cache=await caches.open(DATA_CACHE);
         try {
+          const cache=await caches.open(DATA_CACHE);
           await cache.put(request,response.clone());
           const keys=await cache.keys();
-          // Bound device storage to the most recently stored twelve data files.
-          for(const key of keys.slice(0,Math.max(0,keys.length-12)))await cache.delete(key);
+          // Keep twelve files, retaining the data just fetched.
+          for(const key of keys.filter(key=>key.url!==request.url).slice(0,Math.max(0,keys.length-12)))await cache.delete(key);
         } catch { /* Device quota must never hide a valid network response. */ }
       }
       return response;
     }).catch(() => null);
     event.waitUntil(refresh.then(() => undefined));
     event.respondWith((async () => {
-      const cached = await caches.match(request);
+      const cached = await cachedResponse(request);
       let timeout;
       // Prefer fresh data; an existing offline copy keeps poor connections usable.
       const response = cached ? await Promise.race([refresh, new Promise(resolve => { timeout = setTimeout(() => resolve(null), 3000); })]) : await refresh;
@@ -93,11 +107,11 @@ self.addEventListener('fetch', event => {
 
   if (ASSET.test(url.pathname)) {
     event.respondWith((async () => {
-      const cached = await caches.match(request);
+      const cached = await cachedResponse(request);
       if (cached) return cached;
       try {
         const response = await fetch(request);
-        if (response.ok) await (await caches.open(APP_CACHE)).put(request, response.clone());
+        if (response.ok) await saveAppResponse(request, response);
         return response;
       } catch { return new Response('Offline asset unavailable', { status: 503 }); }
     })());

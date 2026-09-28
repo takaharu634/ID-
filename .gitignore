@@ -51,3 +51,6 @@ next-env.d.ts
 /public/data/initial-data.json
 /public/data/season-*.json
 /public/data/spin-*.json
+
+# Temporary component bundles from rendering tests
+.catcher-test-*/

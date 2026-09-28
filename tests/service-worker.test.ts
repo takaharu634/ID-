@@ -14,20 +14,24 @@ async function harness() {
   const stores = new Map<string, Map<string, Response>>();
   const fetched: string[] = [];
   let offline = false;
+  let quotaExceeded = false;
   let claimed = false;
   const key = (request: string | Request) => new URL(typeof request === 'string' ? request : request.url, 'https://test.invalid').href;
   const caches = {
     keys: async () => [...stores.keys()],
     delete: async (name: string) => stores.delete(name),
     open: async (name: string) => {
+      if (quotaExceeded) throw new Error("storage disabled");
       if (!stores.has(name)) stores.set(name, new Map());
       const store = stores.get(name)!;
       return {
         put: async (request: string | Request, response: Response) => { store.set(key(request), response.clone()); },
         keys: async () => [...store.keys()].map(url => new Request(url)),
+        delete: async (request: string | Request) => store.delete(key(request)),
       };
     },
     match: async (request: string | Request) => {
+      if (quotaExceeded) throw new Error("storage disabled");
       for (const store of stores.values()) if (store.has(key(request))) return store.get(key(request))!.clone();
     },
   };
@@ -49,7 +53,7 @@ async function harness() {
     await Promise.all(pending);
     return { result, backgroundTasks: pending.length };
   }
-  return { dispatch, caches, stores, fetched, setOffline: () => { offline = true; }, claimed: () => claimed };
+  return { dispatch, caches, stores, fetched, exhaustStorage: () => { quotaExceeded = true; }, setOffline: () => { offline = true; }, claimed: () => claimed };
 }
 
 test('offline install caches shell without downloading unused seasons, and removes obsolete caches', async () => {
@@ -63,7 +67,7 @@ test('offline install caches shell without downloading unused seasons, and remov
   await h.dispatch('activate');
   assert.equal(h.claimed(), true);
   assert.ok(!h.stores.has('tohto-savant-offline-v4-data'));
-  assert.ok(h.stores.has('tohto-savant-offline-v7-app'));
+  assert.ok(h.stores.has('tohto-savant-offline-v8-app'));
   assert.deepEqual(await (await h.caches.match('/data/compact/season-2026-fall.json'))!.json(), { pitches: [42] });
 });
 
@@ -88,4 +92,28 @@ test('used data refresh stays alive and a later network failure returns its cach
   assert.deepEqual(await second.result!.json(), { pitches: [1] });
   const absent = await h.dispatch('fetch', { request: new Request('https://test.invalid/data/compact/season-2025-fall.json') });
   assert.equal(absent.result!.status, 503);
+});
+
+
+test('storage denied still returns successful page, asset and data responses', async () => {
+  const h = await harness();
+  h.exhaustStorage();
+  for (const path of ['/', '/assets/new.js', '/data/compact/season-2035-spring.json']) {
+    const request = new Request(`https://test.invalid${path}`);
+    if (path === '/') Object.defineProperty(request, 'mode', { value: 'navigate' });
+    const { result } = await h.dispatch('fetch', { request });
+    assert.equal(result?.status, 200, path);
+  }
+});
+
+test('data cache stays bounded and retains the file refreshed at its limit', async () => {
+  const h = await harness();
+  for (let year = 2020; year < 2033; year++) {
+    await h.dispatch('fetch', { request: new Request(`https://test.invalid/data/compact/season-${year}-spring.json`) });
+  }
+  const cache = await h.caches.open('tohto-savant-offline-v5-data');
+  assert.equal((await cache.keys()).length, 12);
+  assert.equal(await h.caches.match('/data/compact/season-2020-spring.json'), undefined);
+  await h.dispatch('fetch', { request: new Request('https://test.invalid/data/compact/season-2021-spring.json') });
+  assert.ok(await h.caches.match('/data/compact/season-2021-spring.json'));
 });

@@ -92,7 +92,7 @@ export async function advanceVerification(bucket, snapshot) {
   for(const kind of ['raw','summary','spin',...['input','report','sources'].filter(k=>snapshot.objects[k])]) {
     const ref=snapshot.objects[kind],extension=['raw','input'].includes(kind)?'csv':'json';
     if(ref?.key!==`datasets/v2/${snapshot.season}/versions/${snapshot.id}/${kind}.${extension}${ref?.format==='tohto-chunks-v1'?'.manifest.json':''}`)throw new Error('保存版の参照が不正です。');
-    refs.push(...await objectReferences(bucket,ref));
+    for (const reference of await objectReferences(bucket,ref)) refs.push(reference);
   }
   const key=`datasets/v3/verification/${snapshot.id}.json`,snapshotHash=await sha256(JSON.stringify(snapshot));
   const saved=await bucket.get(key),prior=saved?await saved.json():null;

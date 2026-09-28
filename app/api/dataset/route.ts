@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url), season = url.searchParams.get('season') || (await listSeasons(storage.BUCKET)).latest;
   const format = url.searchParams.get('format') || 'json', csv = format === 'csv';
   const version = url.searchParams.get('version');
-  const headers: Record<string,string> = {'cache-control':'no-store','content-type':csv?'text/csv; charset=utf-8':'application/json; charset=utf-8'};
+  const headers: Record<string,string> = {'cache-control':'no-store','content-type':csv || format==='input'?'text/csv; charset=utf-8':'application/json; charset=utf-8'};
   if (csv || version || format==='sources' || format==='input') { const denied = adminApiGuard(request,storage.ADMIN_EMAILS); if (denied) return denied; }
   if (!isSeasonKey(season) || !['csv','json','spin','sources','input'].includes(format)) return Response.json({error:'取得条件が不正です。'},{status:400,headers});
   if (csv) headers['content-disposition'] = `attachment; filename="tohto-${season}-${version || 'current'}.csv"`;

@@ -9,9 +9,23 @@ import { GET as getPitcherScouting } from "../app/api/public/scouting/pitcher/ro
 import { GET as getBatterScouting } from "../app/api/public/scouting/batter/route.ts";
 import { GET as getBatterProfile } from "../app/api/public/scouting/batter-profile/route.ts";
 import { GET as getMetadata } from "../app/api/public/metadata/route.ts";
+import { numberParam } from "../app/api/public/_lib.ts";
 
 const dataset = await readFile(new URL("../public/data/initial-data.json", import.meta.url), "utf8");
 globalThis.fetch = async () => new Response(dataset, { headers: { "content-type": "application/json" } });
+
+test("省略した件数・最低球数はAPI既定値を使う", async () => {
+  const players = await (await getPlayers(new Request('https://example.test/api/public/players'))).json();
+  assert.equal(players.query.limit, 50);
+  assert.equal(players.count, 50);
+  const ranking = await (await getRankings(new Request('https://example.test/api/public/rankings/pitchers'))).json();
+  assert.equal(ranking.query.minPitches, 20);
+  assert.equal(ranking.query.limit, 20);
+  assert.equal(ranking.count, 20);
+  assert.ok(ranking.rankings.every((row: any) => row.pitches >= 20));
+  assert.equal(numberParam('', 50, 1, 200), 50);
+  assert.equal(numberParam('0', 50, 1, 200), 1);
+});
 
 test("公開メタデータで球種正規化ルールと実データ監査値を確認できる", async () => {
   const response = await getMetadata(new Request("https://example.test/api/public/metadata"));

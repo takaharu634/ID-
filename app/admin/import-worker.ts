@@ -47,7 +47,7 @@ self.onmessage = async (event: MessageEvent<File[]>) => {
       let input=entries[0].text;
       if(entries.length>1) {
         const headers=new Set<string>(),rows:Record<string,string>[]=[];
-        for(const entry of entries) {const parsed=csvRows(entry.text);parsed.headers.forEach((h:string)=>headers.add(h));rows.push(...parsed.rows);}
+        for(const entry of entries) {const parsed=csvRows(entry.text);parsed.headers.forEach((h:string)=>headers.add(h));for (const row of parsed.rows) rows.push(row);}
         input=encodeCsv([...headers],rows);
       }
       result.push(await prepareImport(bucket,input,entries.map(e=>e.file.name).join('、').slice(0,250),baseline,entries.map(e=>({name:e.file.name,text:e.text}))));

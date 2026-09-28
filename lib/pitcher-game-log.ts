@@ -1,3 +1,4 @@
+import { maxValue } from './extrema.mjs';
 import type { Row } from "./dataset-types";
 import { summarizeByPitchType } from "./pitch-summary.ts";
 import { batterGamePaNumbers } from "./batter-game-pa.ts";
@@ -21,7 +22,7 @@ export function buildPitcherGameLog(pitches: Row[], games: Row[], pitcherId: str
     const game = gameById.get(gameId);
     const arsenal = summarizeByPitchType(rows, "pitcher");
     const speeds = rows.map((pitch) => pitch.velocity).filter((value) => typeof value === "number" && Number.isFinite(value) && value > 0);
-    const maxVelocity = speeds.length ? Math.max(...speeds) : null;
+    const maxVelocity = speeds.length ? maxValue(speeds) : null;
     // Preserve all ties at the site's displayed precision (0.1 km/h).
     const fastest = maxVelocity === null ? [] : rows.filter((pitch) => typeof pitch.velocity === "number" && Number.isFinite(pitch.velocity) && Math.round(pitch.velocity * 10) === Math.round(maxVelocity * 10))
       .map((pitch): Row => ({ ...pitch, batterGamePa: paNumbers.get(pitch.id) ?? null })).sort((a, b) => (a.pitchNo ?? Infinity) - (b.pitchNo ?? Infinity));

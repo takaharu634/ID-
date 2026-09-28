@@ -5,20 +5,13 @@ import { type SeasonKey } from '../../lib/dataset-types';
 import { loadStaticDataset, resetDatasetCache } from '../../lib/dataset-loader';
 import { seasonInfo } from '../../lib/seasons.mjs';
 import { useSeasonCatalog, refreshSeasonCatalog } from '../../lib/season-catalog';
+import { importAction as action, publishPrepared, notifyDatasetUpdated } from '../../lib/import-actions';
 import DrivePushPanel from './drive-push-panel';
 
 type Report = {inputRows:number;addedRows:number;duplicates:number;totalRows:number;recoveredDates:number;pitchCorrections?:number;notices?:{message:string;count:number}[];ruleVersion:string;existingWarnings?:{message:string;count:number}[];warnings:{message:string;count:number}[]};
 type Prepared = {id?:string;unchanged?:boolean;season:SeasonKey;report:Report};
 type ImportRow = {sourceFormat?:'sources'|'input';id:string;season:SeasonKey;fileName:string;uploadedAt:string;pitchCount:number;isActive:boolean;expectedActive:string};
 type Meta = {season:string;pitches:number;games:number;teams:number;sourceName:string};
-async function action(body: object) {
-  for(;;) {
-    const response = await fetch('/api/upload',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    const value = await response.json(); if (!response.ok) throw new Error(value.error || '反映に失敗しました。');
-    if(response.status===202 && value.verifying)continue;
-    return value;
-  }
-}
 export default function AdminApp({displayName}:{displayName:string}) {
   const {seasons: SEASONS} = useSeasonCatalog();
   const [season,setSeason] = useState<SeasonKey>('2026-fall');
@@ -40,10 +33,16 @@ export default function AdminApp({displayName}:{displayName:string}) {
   }
   useEffect(()=>{setMeta(null); refresh(season).catch(e=>setError(e.message));},[season]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>()=>worker.current?.terminate(),[]);
+  async function refreshPublished(target: SeasonKey) {
+    notifyDatasetUpdated();
+    setSeason(target);
+    try { await refresh(target); }
+    catch { setError('データの保存・反映は完了しました。管理画面の再取得に失敗したため、通信を確認して再読み込みしてください。'); }
+  }
   async function commit(value: Prepared, acknowledgeWarnings: boolean) {
     if (!value.id) return;
     setBusy(true);setError('');setMessage('保存内容を照合して反映しています。');
-    try { const result=await action({action:'commit',id:value.id,acknowledgeWarnings});setMessage(result.message);setPending(items=>items.filter(x=>x.id!==value.id));setSeason(value.season);await refresh(value.season); const channel=new BroadcastChannel('id-touto-data');channel.postMessage('updated');channel.close(); }
+    try { const result=await action({action:'commit',id:value.id,acknowledgeWarnings});setMessage(result.message);setPending(items=>items.filter(x=>x.id!==value.id));await refreshPublished(value.season); }
     catch(e) {setError(e instanceof Error ? e.message : '反映に失敗しました。');setMessage('');}
     finally {setBusy(false);}
   }
@@ -59,23 +58,19 @@ export default function AdminApp({displayName}:{displayName:string}) {
         job.postMessage(files);
       });
       job.terminate();worker.current=null;
-      const review:Prepared[]=[];
-      for(const value of values) {
-        if(value.unchanged) continue;
-        if(value.report.warnings.length) {review.push(value);continue;}
-        await action({action:'commit',id:value.id,acknowledgeWarnings:false});
-      }
-      setPending(review);
-      const target=values.find(v=>!v.unchanged)?.season || season;
-      await refresh(target);setSeason(target);
-      const channel=new BroadcastChannel('id-touto-data');channel.postMessage('updated');channel.close();
-      setMessage(review.length?`${review.length}シーズンに確認が必要な項目があります。`:'検証済みデータを反映しました。重複データは追加していません。');setBusy(false);
+      const batch = await publishPrepared(values, value => action({action:'commit',id:value.id,acknowledgeWarnings:false}), setPending);
+      const target = batch.committed.at(-1)?.season;
+      if (target) await refreshPublished(target);
+      if (batch.error) setError(batch.error);
+      const saved = batch.committed.length ? `${batch.committed.length}シーズンを反映しました。` : '';
+      setMessage(batch.pending.length ? `${saved}${batch.pending.length}シーズンが確認・反映待ちです。` : saved || '変更はありません。同じデータは追加していません。');
+      setBusy(false);
     } catch(e) {worker.current?.terminate();worker.current=null;setError(e instanceof Error?e.message:'検証に失敗しました。');setMessage('');setBusy(false);}
   }
   async function restore(row:ImportRow) {
     if (!window.confirm(`${seasonInfo(row.season).label}を「${row.fileName}」${row.pitchCount.toLocaleString()}球の保存版へ戻しますか？現在の保存版も履歴に残ります。`)) return;
     setBusy(true);setError('');setMessage('保存版を照合して復元しています。');
-    try {await action({action:'restore',season:row.season,id:row.id,expectedActive:row.expectedActive});setSeason(row.season);await refresh(row.season);const channel=new BroadcastChannel('id-touto-data');channel.postMessage('updated');channel.close();setMessage('選択した保存版へ戻しました。');}
+    try {await action({action:'restore',season:row.season,id:row.id,expectedActive:row.expectedActive});setMessage('選択した保存版へ戻しました。');await refreshPublished(row.season);}
     catch(e) {setError(e instanceof Error?e.message:'復元に失敗しました。');setMessage('');}
     finally {setBusy(false);}
   }

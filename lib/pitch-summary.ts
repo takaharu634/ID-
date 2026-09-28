@@ -1,3 +1,4 @@
+import { maxValue } from './extrema.mjs';
 import type { Row } from "./dataset-types";
 
 // Missing measurements do not contribute zero to an average.
@@ -16,7 +17,7 @@ export function summarizeByPitchType(pitches: Row[], role: "pitcher" | "batter")
     const hard = contacts.filter((row) => row.exitVelocity >= 152.9).length;
     const csw = rows.filter((row) => row.result === "空振り" || row.result === "見逃しストライク").length;
     const hits = rows.filter((row) => ["単打", "二塁打", "三塁打", "本塁打"].includes(row.playResult)).length;
-    return { pitchType, pitches: rows.length, usageRate: pitches.length ? rows.length / pitches.length : null, avgVelocity: meanOf(rows, "velocity"), maxVelocity: Math.max(...rows.map((row) => row.velocity).filter(Number.isFinite), 0) || null,
+    return { pitchType, pitches: rows.length, usageRate: pitches.length ? rows.length / pitches.length : null, avgVelocity: meanOf(rows, "velocity"), maxVelocity: maxValue(rows.map((row) => row.velocity).filter(Number.isFinite), 0) || null,
       avgSpin: meanOf(rows, "spin"), avgIvb: meanOf(rows, "ivb"), avgHb: meanOf(rows, "hb"), avgVaa: meanOf(rows, "vaa"), avgExtension: meanOf(rows, "extension"),
       whiffRate: swings ? whiffs / swings : null, swingingStrikeRate: rows.length ? whiffs / rows.length : null, cswRate: rows.length ? csw / rows.length : null, avgExitVelocity: meanOf(contacts, "exitVelocity"),
       hardHitRate: contacts.length ? hard / contacts.length : null, battingAverage: contacts.length ? hits / contacts.length : null,

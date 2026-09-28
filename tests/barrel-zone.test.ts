@@ -8,6 +8,20 @@ async function season(name: string) {
   return JSON.parse(await readFile(new URL(`../public/data/${name}`, import.meta.url), "utf8"));
 }
 
+test("漢字未登録選手は既存IDで分離し、大学をまたいで混同しない", () => {
+  assert.equal(canonicalPlayerKey('新大学', '', 'player-1'), '新大学|id:player-1');
+  assert.notEqual(canonicalPlayerKey('新大学', '', 'player-1'), canonicalPlayerKey('新大学', '', 'player-2'));
+  assert.notEqual(canonicalPlayerKey('新大学', '', 'player-1'), canonicalPlayerKey('別大学', '', 'player-1'));
+  assert.equal(canonicalPlayerKey('中央大学', '鈴木 泰成', 'old'), canonicalPlayerKey('中央大学', '鈴木　泰成', 'new'));
+});
+
+test("コース欠損を中央へ置かず、実測の横位置0は集計する", () => {
+  const valid = { result: 'インプレー', plateX: 0, plateZ: .7, exitVelocity: 150, launchAngle: 20 };
+  const cells = summarizeBarrelZones([valid, { ...valid, plateX: null }, { ...valid, plateZ: null }, { ...valid, plateX: '' }], 'bip');
+  assert.equal(cells.reduce((sum, cell) => sum + cell.denominator, 0), 1);
+  assert.equal(cells.reduce((sum, cell) => sum + cell.numerator, 0), 1);
+});
+
 test("既存のBarrel相当境界とスイング・BIP定義を維持する", () => {
   assert.equal(isBarrelEquivalent({ exitVelocity: 145, launchAngle: 10 }), true);
   assert.equal(isBarrelEquivalent({ exitVelocity: 145, launchAngle: 35 }), true);

@@ -9,8 +9,8 @@ export function hasKanjiName(value: unknown) {
   return /[一-龯々〆ヵヶ]/u.test(String(value ?? ""));
 }
 
-export function canonicalPlayerKey(team: unknown, kanji: unknown) {
-  if (!hasKanjiName(kanji)) return "";
+export function canonicalPlayerKey(team: unknown, kanji: unknown, playerId?: unknown) {
+  if (!hasKanjiName(kanji)) return playerId ? `${String(team ?? '').trim()}|id:${String(playerId)}` : "";
   return `${String(team ?? "").trim()}|${String(kanji).replace(/[\s　]+/gu, "")}`;
 }
 
@@ -30,8 +30,9 @@ export function isBipPitch(pitch: BarrelPitch) {
 }
 
 function zoneIndex(pitch: BarrelPitch) {
-  const x = Number(pitch.plateX);
-  const z = Number(pitch.plateZ);
+  const x = pitch.plateX;
+  const z = pitch.plateZ;
+  if (typeof x !== 'number' || typeof z !== 'number') return null;
   if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
   const col = X_EDGES.findIndex((edge, index) => index < X_EDGES.length - 1 && x >= edge && x < X_EDGES[index + 1]);
   const fromBottom = Z_EDGES.findIndex((edge, index) => index < Z_EDGES.length - 1 && z >= edge && z < Z_EDGES[index + 1]);

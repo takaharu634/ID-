@@ -1,4 +1,5 @@
 "use client";
+import { maxValue, minValue } from '../lib/extrema.mjs';
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
 import { createContext, lazy, Suspense, ReactNode, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -12,7 +13,7 @@ import { type Row, type Dataset, type SeasonKey } from "../lib/dataset-types";
 import { seasonInfo, seasonFromLabel } from "../lib/seasons.mjs";
 import { useSeasonCatalog, refreshSeasonCatalog } from "../lib/season-catalog";
 import { enrichDevelopmentDataset } from '../lib/development-enrichment';
-import { loadStaticDataset, loadBundledDataset, resetDatasetCache, createLatestRequest, readPreference, savePreference } from "../lib/dataset-loader";
+import { loadStaticDataset, loadBundledDataset, createLatestRequest, readPreference, savePreference } from "../lib/dataset-loader";
 import { METRIC_INFO, METRIC_KEY_BY_LABEL, getMetricInfo, type MetricInfo } from "../lib/metric-definitions";
 import { printReport } from "./print-report";
 import LeagueComparison from "./league-comparison";
@@ -368,13 +369,12 @@ export default function SavantApp() {
   currentDisplay.current={data,season};
   const observedRevision = useRef('');
 
-  async function loadDataset(targetSeason: SeasonKey = season) {
+  async function loadDataset(targetSeason: SeasonKey = season, revision = catalogRef.current.revision) {
     const isCurrent = latestLoad.current.start();
     requestedSeason.current = targetSeason;
     setLoadingSeason(targetSeason);
     setLoadError("");
     try {
-      resetDatasetCache();
       let selected: Dataset, notice = "";
       try { selected = await loadStaticDataset<Dataset>(seasonInfo(targetSeason).path); }
       catch (error) {
@@ -389,6 +389,7 @@ export default function SavantApp() {
       setData(selected);
       setSeason(targetSeason);
       setLoadError(notice);
+      observedRevision.current = notice ? '' : revision;
       savePreference("tohto-savant-season", targetSeason);
     } catch (error) {
       if (isCurrent()) setLoadError(error instanceof Error ? error.message : "データを読み込めませんでした。");
@@ -403,11 +404,10 @@ export default function SavantApp() {
     const linkedSeason = new URLSearchParams(window.location.search).get("シーズン") as SeasonKey;
     async function initialize() {
     const available = await refreshSeasonCatalog().catch(()=>catalog);
-    observedRevision.current=available.revision;
     const initialSeason = available.seasons[linkedSeason] ? linkedSeason : saved && available.seasons[saved] ? saved : available.latest;
     const initialUrl = new URL(window.location.href); initialUrl.searchParams.set("シーズン", initialSeason);
     window.history.replaceState(window.history.state, "", initialUrl.pathname + initialUrl.search + initialUrl.hash);
-    await loadDataset(initialSeason);
+    await loadDataset(initialSeason, available.revision);
     }
     void initialize();
     fetch("/data/news_feed.json", { cache: "no-store" }).then((response) => response.ok ? response.json() : [])
@@ -416,11 +416,12 @@ export default function SavantApp() {
     const pop = () => { setRoute(readRoute()); const target = new URLSearchParams(window.location.search).get("シーズン") as SeasonKey; if (catalogRef.current.seasons[target] && target !== requestedSeason.current) loadDataset(target); };
     const check = async () => {
       if (document.visibilityState === 'hidden') return;
-      try { const fresh=await refreshSeasonCatalog(); if(observedRevision.current && observedRevision.current!==fresh.revision) { observedRevision.current=fresh.revision; await loadDataset(requestedSeason.current); } } catch { /* Keep the displayed snapshot. */ }
+      try { const fresh=await refreshSeasonCatalog(); if(observedRevision.current!==fresh.revision) await loadDataset(requestedSeason.current, fresh.revision); } catch { /* Retry on the next focus or online event. */ }
     };
     window.addEventListener("popstate", pop);
     window.addEventListener('focus',check); window.addEventListener('online',check); document.addEventListener('visibilitychange',check);
-    const channel=typeof BroadcastChannel!=='undefined'?new BroadcastChannel('id-touto-data'):null;
+    let channel: BroadcastChannel | null = null;
+    try { if (typeof BroadcastChannel !== 'undefined') channel = new BroadcastChannel('id-touto-data'); } catch { /* Focus/online checks remain available when messaging is restricted. */ }
     if(channel) channel.onmessage=()=>void check();
     return () => { latestLoad.current.cancel(); window.removeEventListener("popstate", pop); window.removeEventListener('focus',check); window.removeEventListener('online',check); document.removeEventListener('visibilitychange',check); channel?.close(); };
   }, []);
@@ -1126,7 +1127,7 @@ function SearchSideAnalysis({ pitches, minimumSample, zone, filters }: { pitches
 
 function SearchPitchTypeAnalysis({ pitches }: { pitches: Row[] }) {
   const [family,setFamily]=useState("すべて");const allTypes=[...new Set(pitches.map((row)=>row.pitchType))].sort();const types=family==="すべて"?allTypes:allTypes.filter((type)=>pitchFamily(type)===family);const total=Math.max(1,pitches.length);
-  const summary=types.map((type)=>{const rows=pitches.filter((row)=>row.pitchType===type);const speeds=rows.map((row)=>row.velocity).filter(Number.isFinite);return {type,family:pitchFamily(type),n:rows.length,usage:rows.length/total,max:speeds.length?Math.max(...speeds):null,min:speeds.length?Math.min(...speeds):null,avg:meanOf(rows,"velocity"),right:rows.filter((row)=>row.batterSide==="右").length,left:rows.filter((row)=>row.batterSide==="左").length};});
+  const summary=types.map((type)=>{const rows=pitches.filter((row)=>row.pitchType===type);const speeds=rows.map((row)=>row.velocity).filter(Number.isFinite);return {type,family:pitchFamily(type),n:rows.length,usage:rows.length/total,max:speeds.length?maxValue(speeds):null,min:speeds.length?minValue(speeds):null,avg:meanOf(rows,"velocity"),right:rows.filter((row)=>row.batterSide==="右").length,left:rows.filter((row)=>row.batterSide==="左").length};});
   return <section className="search-analysis-workspace"><header><span>PITCH TYPE × SIDE</span><h2>左右・球種別投球分析</h2><p>球種はID東都の分析用正規化分類。真っすぐ系・曲がる系・落ちる系で切り替えられます。</p></header><div className="pitch-family-switch">{["すべて","真っすぐ系","曲がる系","落ちる系","その他"].map((value)=><button key={value} className={family===value?"active":""} onClick={()=>setFamily(value)}>{value}</button>)}</div><div className="table-scroll"><table className="data-table pitch-type-summary"><thead><tr><th>分類</th><th>球種</th><th>球数</th><th>使用率</th><th>最高球速</th><th>最低球速</th><th>平均球速</th><th>右打者</th><th>左打者</th></tr></thead><tbody>{summary.map((row)=><tr key={row.type}><td><span className="pitch-family-tag">{row.family}</span></td><td>{row.type}</td><td>{row.n}</td><td>{(row.usage*100).toFixed(1)}%</td><td>{row.max===null?"—":`${row.max.toFixed(1)}`}</td><td>{row.min===null?"—":`${row.min.toFixed(1)}`}</td><td>{row.avg===null?"—":`${row.avg.toFixed(1)}`}</td><td>{row.right}</td><td>{row.left}</td></tr>)}</tbody></table></div><div className="pitch-type-side-rows">{["右","左"].map((side)=><section key={side}><header><strong>{side}打者への投球</strong><span>{pitches.filter((row)=>row.batterSide===side&&types.includes(row.pitchType)).length.toLocaleString("ja-JP")}球</span></header><div className="pitch-type-plot-grid">{types.map((type)=>{const rows=pitches.filter((row)=>row.batterSide===side&&row.pitchType===type);return <article key={type}><header><span>{type}</span><b>n={rows.length}</b></header><SearchPitchLocationPlot pitches={rows} compact showLegend={false}/><small>{pitchFamily(type)}</small></article>})}</div></section>)}</div><SearchAnalysisLegend/></section>;
 }
 
@@ -1370,7 +1371,7 @@ function DeltaMetricCard({ label, metricKey, fall, spring, format = "number", un
 }
 
 function DeltaViewPanel({ initialBefore = "2026-spring", initialAfter = "2026-fall" }: { initialBefore?: SeasonKey; initialAfter?: SeasonKey }) {
-  const {seasons: SEASONS} = useSeasonCatalog();
+  const {seasons: SEASONS, revision} = useSeasonCatalog();
   const [beforeSeason, setBeforeSeason] = useState<SeasonKey>(initialBefore);
   const [afterSeason, setAfterSeason] = useState<SeasonKey>(initialAfter);
   const [retry, setRetry] = useState(0);
@@ -1384,14 +1385,14 @@ function DeltaViewPanel({ initialBefore = "2026-spring", initialAfter = "2026-fa
 
   useEffect(() => {
     let active = true;
-    setDatasets(null); setLoadError(""); setPlayerKey("");
+    setDatasets(null); setLoadError("");
     Promise.all([
       loadStaticDataset<Dataset>(seasonInfo(beforeSeason).path),
       loadStaticDataset<Dataset>(seasonInfo(afterSeason).path),
     ]).then(([fall, spring]) => { if (active) setDatasets({ fall, spring }); })
       .catch(() => { if (active) setLoadError("シーズン比較データを読み込めませんでした。"); });
     return () => { active = false; };
-  }, [beforeSeason, afterSeason, retry]);
+  }, [beforeSeason, afterSeason, retry, revision]);
 
   const pairs = useMemo(() => {
     if (!datasets) return [] as { key: string; fall: Row; spring: Row }[];
@@ -1895,7 +1896,7 @@ function deriveBatterSummary(base: Row, pitches: Row[], league: Row) {
   return {...base,pitches:pitches.length,bbe:contacts.length,percentiles:{},avgLaunchAngle:meanOf(contacts,"launchAngle"),pa:terminal.length,homeRuns:terminal.filter((row)=>row.playResult==="本塁打").length,battingAverage:avg,onBasePercentage:obp,sluggingPercentage:slg,ops:obp===null||slg===null?null:obp+slg,xba:ab.length?expectedHit/ab.length:null,xslg:ab.length?expectedTb/ab.length:null,xwoba,wrcPlus:xwoba&&league.woba?100*xwoba/league.woba:null,avgExitVelocity:meanOf(contacts,"exitVelocity"),maxExitVelocity:evs.at(-1)??null,ev90:evs.length?evs[Math.floor((evs.length-1)*.9)]:null,hardHitRate:contacts.length?contacts.filter((row)=>row.exitVelocity>=152.9).length/contacts.length:null,barrelRate:contacts.length?contacts.filter((row)=>{const mph=row.exitVelocity/1.609344,over=mph-98;return mph>=98&&row.launchAngle>=Math.max(8,26-over)&&row.launchAngle<=Math.min(50,30+over*1.5)}).length/contacts.length:null,whiffRate:swings.length?swings.filter((row)=>row.result==="空振り").length/swings.length:null};
 }
 
-function derivePitcherSummary(base: Row,pitches:Row[],league:Row){const swings=pitches.filter((row)=>["空振り","インプレー","ファウル","ファウルフライ"].includes(row.result));const contacts=pitches.filter(isMeasuredFairBall);const csw=pitches.filter((row)=>row.result==="空振り"||row.result==="見逃しストライク").length;const terminal=pitches.filter((row)=>row.playResult||((row.balls===3)&&["ボール","ワンバウンド"].includes(row.result))||((row.strikes===2)&&["空振り","見逃しストライク"].includes(row.result))||row.result==="死球");const walks=terminal.filter((row)=>["Walk","Waik"].includes(row.korbb)||(row.balls===3&&["ボール","ワンバウンド"].includes(row.result)));const strikeouts=terminal.filter((row)=>row.korbb==="Strikeout"||(row.strikes===2&&["空振り","見逃しストライク"].includes(row.result)));const hbp=terminal.filter((row)=>row.result==="死球");const hits=terminal.filter((row)=>["単打","二塁打","三塁打","本塁打"].includes(row.playResult));const outs=terminal.reduce((sum,row)=>{const recorded=row.outsOnPlay??0;return sum+recorded+(strikeouts.includes(row)&&recorded===0?1:0)},0);const runs=terminal.reduce((sum,row)=>sum+(row.runsScored??0),0);const expected=pitches.reduce((sum,row)=>sum+(Number.isFinite(row.expectedWoba)?row.expectedWoba:0),0);const xwobaAllowed=terminal.length?(expected+.69*walks.length+.72*hbp.length)/terminal.length:null;return {...base,pitches:pitches.length,pa:terminal.length,innings:`${Math.floor(outs/3)}.${outs%3}`,era:outs?runs*27/outs:null,strikeouts:strikeouts.length,walks:walks.length,hitsAllowed:hits.length,maxVelocity:Math.max(...pitches.map((row)=>row.velocity).filter(Number.isFinite),0)||null,avgVelocity:meanOf(pitches,"velocity"),whiffRate:swings.length?swings.filter((row)=>row.result==="空振り").length/swings.length:null,cswRate:pitches.length?csw/pitches.length:null,avgExitVelocityAllowed:meanOf(contacts,"exitVelocity"),hardHitRateAllowed:contacts.length?contacts.filter((row)=>row.exitVelocity>=152.9).length/contacts.length:null,xwobaAllowed,xera:xwobaAllowed===null?null:Math.max(0,(league.era??4)+(xwobaAllowed-(league.xwoba??.32))*25)};}
+function derivePitcherSummary(base: Row,pitches:Row[],league:Row){const swings=pitches.filter((row)=>["空振り","インプレー","ファウル","ファウルフライ"].includes(row.result));const contacts=pitches.filter(isMeasuredFairBall);const csw=pitches.filter((row)=>row.result==="空振り"||row.result==="見逃しストライク").length;const terminal=pitches.filter((row)=>row.playResult||((row.balls===3)&&["ボール","ワンバウンド"].includes(row.result))||((row.strikes===2)&&["空振り","見逃しストライク"].includes(row.result))||row.result==="死球");const walks=terminal.filter((row)=>["Walk","Waik"].includes(row.korbb)||(row.balls===3&&["ボール","ワンバウンド"].includes(row.result)));const strikeouts=terminal.filter((row)=>row.korbb==="Strikeout"||(row.strikes===2&&["空振り","見逃しストライク"].includes(row.result)));const hbp=terminal.filter((row)=>row.result==="死球");const hits=terminal.filter((row)=>["単打","二塁打","三塁打","本塁打"].includes(row.playResult));const outs=terminal.reduce((sum,row)=>{const recorded=row.outsOnPlay??0;return sum+recorded+(strikeouts.includes(row)&&recorded===0?1:0)},0);const runs=terminal.reduce((sum,row)=>sum+(row.runsScored??0),0);const expected=pitches.reduce((sum,row)=>sum+(Number.isFinite(row.expectedWoba)?row.expectedWoba:0),0);const xwobaAllowed=terminal.length?(expected+.69*walks.length+.72*hbp.length)/terminal.length:null;return {...base,pitches:pitches.length,pa:terminal.length,innings:`${Math.floor(outs/3)}.${outs%3}`,era:outs?runs*27/outs:null,strikeouts:strikeouts.length,walks:walks.length,hitsAllowed:hits.length,maxVelocity:maxValue(pitches.map((row)=>row.velocity).filter(Number.isFinite),0)||null,avgVelocity:meanOf(pitches,"velocity"),whiffRate:swings.length?swings.filter((row)=>row.result==="空振り").length/swings.length:null,cswRate:pitches.length?csw/pitches.length:null,avgExitVelocityAllowed:meanOf(contacts,"exitVelocity"),hardHitRateAllowed:contacts.length?contacts.filter((row)=>row.exitVelocity>=152.9).length/contacts.length:null,xwobaAllowed,xera:xwobaAllowed===null?null:Math.max(0,(league.era??4)+(xwobaAllowed-(league.xwoba??.32))*25)};}
 
 function PlayerFilters({ filters, setFilters, data, role }: { filters: PlayerFilterState; setFilters: (value: PlayerFilterState) => void; data: Dataset; role: string }) {
   const update = (key: keyof PlayerFilterState, value: string) => setFilters({ ...filters, [key]: value });
@@ -2301,8 +2302,8 @@ function ReleasePlot({ pitches }: { pitches: Row[] }) {
   const rows = pitches.filter((row) => Number.isFinite(row.releaseSide) && Number.isFinite(row.releaseHeight));
   if (!rows.length) return <p className="empty-chart">リリース位置の計測データがありません。</p>;
   const xs = rows.map((row) => catcherX(row.releaseSide)), ys = rows.map((row) => row.releaseHeight);
-  const extent = Math.max(...xs.map(Math.abs))+10;
-  const xmin = -extent, xmax = extent, ymin = Math.min(...ys)-10, ymax = Math.max(...ys)+10;
+  const extent = maxValue(xs.map(Math.abs))+10;
+  const xmin = -extent, xmax = extent, ymin = minValue(ys)-10, ymax = maxValue(ys)+10;
   const x = (v:number) => 40 + (v-xmin)/Math.max(1,xmax-xmin)*350, y=(v:number)=>320-(v-ymin)/Math.max(1,ymax-ymin)*270;
   return <div className="chart-inner"><svg viewBox="0 0 420 350" role="img" aria-label="捕手側から見たリリース位置"><rect x="40" y="30" width="350" height="290" fill="#fafafa" stroke="#d8dcde" /><line x1={x(0)} x2={x(0)} y1="30" y2="320" stroke="#aeb5b7"/>{rows.slice(-700).map((row,index)=><circle key={`${row.id}-${index}`} cx={x(catcherX(row.releaseSide))} cy={y(row.releaseHeight)} r="4" fill={PITCH_COLORS[row.pitchType]??"#777"} opacity=".5"><title>{`${row.pitchType} 横${row.releaseSide}cm 高さ${row.releaseHeight}cm`}</title></circle>)}</svg><CatcherViewAxis/><p>横位置 × リリース高（cm）</p></div>;
 }
@@ -2322,7 +2323,7 @@ function ContinuousZoneHeatmap({ pitches, role: _role, metric = "ev" }: { pitche
   const rows=pitches.filter((row)=>Number.isFinite(row.plateX)&&Number.isFinite(row.plateZ)&&(!side||row.batterSide===side));
   const cells=Array.from({length:gridSize*gridSize},()=>({n:0,sum:0}));
   rows.forEach((row)=>{ if(row.plateX<-.45||row.plateX>.45||row.plateZ<.25||row.plateZ>1.25)return; const c=Math.min(gridSize-1,Math.max(0,Math.floor((row.plateX+.45)/.9*gridSize))); const r=Math.min(gridSize-1,Math.max(0,gridSize-1-Math.floor((row.plateZ-.25)/1*gridSize))); const cell=cells[r*gridSize+c]; if(metric==="density"){cell.n++;cell.sum++;} else if(Number.isFinite(row.exitVelocity)){cell.n++;cell.sum+=row.exitVelocity;} });
-  const values=cells.map((cell)=>metric==="density"?cell.n:(cell.n?cell.sum/cell.n:null)).filter(Number.isFinite) as number[]; const min=values.length?Math.min(...values):0,max=values.length?Math.max(...values):1;
+  const values=cells.map((cell)=>metric==="density"?cell.n:(cell.n?cell.sum/cell.n:null)).filter(Number.isFinite) as number[]; const min=values.length?minValue(values):0,max=values.length?maxValue(values):1;
   const color=(value:number|null,n:number)=>{if(value===null||!n)return "transparent";const t=(value-min)/Math.max(.001,max-min);return `rgba(${Math.round(34+195*t)},${Math.round(142-93*t)},${Math.round(151-100*t)},${Math.min(.86,.18+Math.sqrt(n)/8)})`;};
   const blurId=`zone-blur-${useId().replace(/:/g,"")}`;
   return <div className="smooth-heatmap"><div className="heatmap-controls"><div className="segmented">{[[3,"9分割"],[5,"25分割"],[9,"81分割"]].map(([size,label])=><button key={size} className={gridSize===size?"active":""} onClick={()=>setGridSize(size as 3|5|9)}>{label}</button>)}</div><select value={side} onChange={(event)=>setSide(event.target.value)}><option value="">左右すべて</option><option>右</option><option>左</option></select></div><svg viewBox="0 0 450 500" role="img" aria-label="捕手側から見たシームレスヒートマップ"><defs><filter id={blurId} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation={gridSize===3?34:gridSize===5?22:12}/></filter><clipPath id={`${blurId}-clip`}><rect x="0" y="0" width="450" height="500"/></clipPath></defs><g clipPath={`url(#${blurId}-clip)`} filter={`url(#${blurId})`}>{cells.map((cell,index)=>{const row=Math.floor(index/gridSize),col=gridSize-1-index%gridSize,value=metric==="density"?cell.n:(cell.n?cell.sum/cell.n:null);return <rect key={index} x={col*450/gridSize} y={row*500/gridSize} width={450/gridSize} height={500/gridSize} fill={color(value,cell.n)} />;})}</g><rect x={x(-.254)} y={y(1.05)} width={x(.254)-x(-.254)} height={y(.45)-y(1.05)} fill="none" stroke="#263638" strokeWidth="3"/>{[1,2].map(i=><g key={i}><line x1={x(-.254+.508*i/3)} x2={x(-.254+.508*i/3)} y1={y(1.05)} y2={y(.45)} stroke="#263638" opacity=".45"/><line x1={x(-.254)} x2={x(.254)} y1={y(.45+.6*i/3)} y2={y(.45+.6*i/3)} stroke="#263638" opacity=".45"/></g>)}</svg><CatcherViewAxis/><div className="heat-scale"><span>{metric==="density"?"少":"遅い"}</span><i/><span>{metric==="density"?"多":"速い"}</span></div></div>;
@@ -2337,7 +2338,7 @@ function CountTable({ pitches, role }: { pitches: Row[]; role: "pitcher"|"batter
 function MetricTrendChart({ pitches, role }: { pitches: Row[]; role: "pitcher"|"batter" }) {
   const options=role==="pitcher"?["velocity","spin","ivb","hb","releaseHeight","releaseSide"]:["exitVelocity","launchAngle"];const [metric,setMetric]=useState(options[0]);
   const groups=new Map<string,Row[]>();pitches.forEach((row)=>{const arr=groups.get(row.gameId)??[];arr.push(row);groups.set(row.gameId,arr)});const points=[...groups.entries()].map(([id,rows])=>({id,date:rows[0]?.date,value:meanOf(rows,metric),n:rows.filter((row)=>Number.isFinite(row[metric])).length})).filter((row)=>row.value!==null).sort((a,b)=>a.date.localeCompare(b.date));
-  const values=points.map((row)=>row.value as number); const min=values.length?Math.min(...values):0,max=values.length?Math.max(...values):1;const x=(i:number)=>50+i/Math.max(1,points.length-1)*430,y=(v:number)=>300-(v-min)/Math.max(.001,max-min)*235;
+  const values=points.map((row)=>row.value as number); const min=values.length?minValue(values):0,max=values.length?maxValue(values):1;const x=(i:number)=>50+i/Math.max(1,points.length-1)*430,y=(v:number)=>300-(v-min)/Math.max(.001,max-min)*235;
   const labels:Row={velocity:"平均球速",spin:"平均回転数",ivb:"IVB",hb:"横変化",releaseHeight:"リリース高",releaseSide:"リリース横",exitVelocity:"平均打球速度",launchAngle:"平均打球角度"};
   return <ChartCard title="試合内・試合別推移"><div className="trend-control"><label>表示<select value={metric} onChange={(event)=>setMetric(event.target.value)}>{options.map((value)=><option value={value} key={value}>{labels[value]}</option>)}</select></label></div>{points.length?<svg className="trend-svg" viewBox="0 0 520 340" role="img" aria-label={`${labels[metric]}推移`}><line x1="50" x2="480" y1="300" y2="300" stroke="#aeb5b7"/><polyline points={points.map((row,index)=>`${x(index)},${y(row.value as number)}`).join(" ")} fill="none" stroke="#318b93" strokeWidth="4"/>{points.map((row,index)=><g key={row.id}><circle cx={x(index)} cy={y(row.value as number)} r="5" fill="#c52636"><title>{row.date} {Number(row.value).toFixed(1)} n={row.n}</title></circle><text x={x(index)} y="322" textAnchor="middle">{row.date?.slice(5)}</text></g>)}</svg>:<p className="empty-chart">該当する計測値がありません。</p>}</ChartCard>;
 }
@@ -2828,8 +2829,8 @@ function RollingChart({ pitches, mode }: { pitches: Row[]; mode: "pitcher" | "ba
   }
   const points = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, values]) => ({ date, value: values.reduce((a, b) => a + b, 0) / values.length }));
   if (!points.length) return <p className="empty-chart">対象データがありません。</p>;
-  const min = Math.min(...points.map((row) => row.value)) - 3;
-  const max = Math.max(...points.map((row) => row.value)) + 3;
+  const min = minValue(points.map((row) => row.value)) - 3;
+  const max = maxValue(points.map((row) => row.value)) + 3;
   const x = (index: number) => points.length === 1 ? 280 : 48 + (index / (points.length - 1)) * 468;
   const y = (value: number) => 278 - ((value - min) / (max - min || 1)) * 220;
   const path = points.map((row, index) => `${index ? "L" : "M"}${x(index)},${y(row.value)}`).join(" ");

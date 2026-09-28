@@ -1,3 +1,4 @@
+import { maxValue } from './extrema.mjs';
 import type { Row } from './dataset-types';
 
 export const BATTER_FAMILIES = ['ストレート系', '曲がる系', '落ちる系'] as const;
@@ -22,7 +23,7 @@ export const reportContact = (p: Row) => p.result === 'インプレー';
 export const measuredEV = (p: Row) => reportContact(p) && Number.isFinite(p.exitVelocity) && p.exitVelocity > 0;
 export function reportEV(rows: Row[]) {
   const values = rows.filter(measuredEV).map(p => p.exitVelocity as number);
-  return { n: values.length, avg: values.length ? values.reduce((a,b)=>a+b,0)/values.length : null, max: values.length ? Math.max(...values) : null };
+  return { n: values.length, avg: values.length ? values.reduce((a,b)=>a+b,0)/values.length : null, max: values.length ? maxValue(values) : null };
 }
 export function reportDirection(p: Row) {
   const a = p.sprayAngle ?? p.direction;

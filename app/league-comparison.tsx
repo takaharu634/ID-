@@ -1,3 +1,4 @@
+import { maxValue } from '../lib/extrema.mjs';
 import { useMemo } from 'react';
 import type { Dataset, Row } from '../lib/dataset-types';
 import { annotatePlateAppearances, isSwing, isStrikeEquivalent } from '../lib/scouting-analytics';
@@ -17,7 +18,7 @@ export function leagueComparison(data:Dataset){
   const typed=fair.filter(p=>['GroundBall','LineDrive','FlyBall','Popup','Bunt'].includes(String(p.hitType)));
   const velocity=pitching.filter(p=>p.pitchType==='ストレート'&&measured(p.velocity)).map(p=>p.velocity as number);
   const pa=sum(bat,'pa'),ab=sum(bat,'ab');
-  return {name,avg:ratio(sum(bat,'hits'),ab),slg:ratio(sum(bat,'hits')+sum(bat,'doubles')+2*sum(bat,'triples')+3*sum(bat,'homeRuns'),ab),k:ratio(sum(bat,'strikeouts'),pa),bb:ratio(sum(bat,'walks')+sum(bat,'hbp'),pa),fs:ratio(fs.filter(isSwing).length,fs.length),ev:mean(ev.map(p=>p.exitVelocity as number)),hard:ratio(ev.filter(p=>Number(p.exitVelocity)>=(data.league.hardHitThreshold??152.9)).length,ev.length),gb:ratio(typed.filter(p=>p.hitType==='GroundBall').length,typed.length),fb:ratio(typed.filter(p=>p.hitType==='FlyBall'||p.hitType==='Popup').length,typed.length),first:ratio(first.filter(isStrikeEquivalent).length,first.length),whiff:ratio(swings.filter(p=>p.result==='空振り').length,swings.length),allowed:ratio(sum(pit,'walks')+sum(pit,'hbp'),sum(pit,'pa')),velocity:mean(velocity),max:velocity.length?Math.max(...velocity):null};
+  return {name,avg:ratio(sum(bat,'hits'),ab),slg:ratio(sum(bat,'hits')+sum(bat,'doubles')+2*sum(bat,'triples')+3*sum(bat,'homeRuns'),ab),k:ratio(sum(bat,'strikeouts'),pa),bb:ratio(sum(bat,'walks')+sum(bat,'hbp'),pa),fs:ratio(fs.filter(isSwing).length,fs.length),ev:mean(ev.map(p=>p.exitVelocity as number)),hard:ratio(ev.filter(p=>Number(p.exitVelocity)>=(data.league.hardHitThreshold??152.9)).length,ev.length),gb:ratio(typed.filter(p=>p.hitType==='GroundBall').length,typed.length),fb:ratio(typed.filter(p=>p.hitType==='FlyBall'||p.hitType==='Popup').length,typed.length),first:ratio(first.filter(isStrikeEquivalent).length,first.length),whiff:ratio(swings.filter(p=>p.result==='空振り').length,swings.length),allowed:ratio(sum(pit,'walks')+sum(pit,'hbp'),sum(pit,'pa')),velocity:mean(velocity),max:velocity.length?maxValue(velocity):null};
  });
 }
 const groups:[string,[string,string,string,boolean][]][]=[

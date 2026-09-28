@@ -68,36 +68,37 @@ export default function BarrelZoneView({ initialSeason = "2026-fall", initialDat
     return () => { active = false; };
   }, [seasonKeys, SEASONS, catalog.revision]);
 
-  const allPitches = useMemo<Row[]>(() => SEASONS.flatMap((item) => (datasets[item.key]?.pitches ?? []).map((pitch): Row => ({ ...pitch, seasonKey: item.key }))), [datasets]);
+  const allPitches = useMemo<Row[]>(() => SEASONS.flatMap((item) => (datasets[item.key]?.pitches ?? []).map((pitch): Row => ({ ...pitch, seasonKey: item.key }))), [datasets, SEASONS]);
 
   const periodPitches = useMemo(() => allPitches.filter(pitch => seasonKeys.includes(pitch.seasonKey)), [allPitches, seasonKeys]);
-  const teams = [...new Set(allPitches.map(pitch => role === "batting" ? pitch.batterTeam : pitch.pitcherTeam))].filter(Boolean).sort();
+  const teams = [...new Set(periodPitches.map(pitch => role === "batting" ? pitch.batterTeam : pitch.pitcherTeam))].filter(Boolean).sort();
+  const effectiveTeam = teams.includes(team) ? team : teams[0] ?? "";
   const candidates = useMemo(() => {
     const byPlayer = new Map<string, Row>();
     for (const pitch of periodPitches) {
       const id = role === "batting" ? pitch.batterId : pitch.pitcherId;
       const rowTeam = role === "batting" ? pitch.batterTeam : pitch.pitcherTeam;
       const kanji = role === "batting" ? pitch.batterKanji : pitch.pitcherKanji;
-      const key = canonicalPlayerKey(rowTeam, kanji);
-      if (!id || rowTeam !== team || !key) continue;
+      const key = canonicalPlayerKey(rowTeam, kanji, id);
+      if (!id || rowTeam !== effectiveTeam || !key) continue;
       const previous = byPlayer.get(key);
       byPlayer.set(key, { key, ids: [...new Set([...(previous?.ids ?? []), id])], name: role === "batting" ? pitch.batter : pitch.pitcher, kanji, team: rowTeam });
     }
     return [...byPlayer.values()].sort(comparePlayerNames);
-  }, [periodPitches, role, team]);
+  }, [periodPitches, role, effectiveTeam]);
 
   const effectivePlayerKey = candidates.some((row) => row.key === playerKey) ? playerKey : candidates[0]?.key ?? "";
 
-  const pitchTypes = useMemo(() => [...new Set(periodPitches.filter((pitch) => role === "batting" ? pitch.batterTeam === team : pitch.pitcherTeam === team).map((pitch) => pitch.pitchType).filter(Boolean))].sort(), [periodPitches, role, team]);
+  const pitchTypes = useMemo(() => [...new Set(periodPitches.filter((pitch) => role === "batting" ? pitch.batterTeam === effectiveTeam : pitch.pitcherTeam === effectiveTeam).map((pitch) => pitch.pitchType).filter(Boolean))].sort(), [periodPitches, role, effectiveTeam]);
   const filtered = useMemo(() => periodPitches.filter((pitch) => {
-    if ((role === "batting" ? pitch.batterTeam : pitch.pitcherTeam) !== team) return false;
-    const pitchPlayerKey = canonicalPlayerKey(role === "batting" ? pitch.batterTeam : pitch.pitcherTeam, role === "batting" ? pitch.batterKanji : pitch.pitcherKanji);
-    if (effectivePlayerKey && pitchPlayerKey !== effectivePlayerKey) return false;
+    if ((role === "batting" ? pitch.batterTeam : pitch.pitcherTeam) !== effectiveTeam) return false;
+    const pitchPlayerKey = canonicalPlayerKey(role === "batting" ? pitch.batterTeam : pitch.pitcherTeam, role === "batting" ? pitch.batterKanji : pitch.pitcherKanji, role === "batting" ? pitch.batterId : pitch.pitcherId);
+    if (!effectivePlayerKey || pitchPlayerKey !== effectivePlayerKey) return false;
     if (pitchType && pitch.pitchType !== pitchType) return false;
     if (batterSide && pitch.batterSide !== batterSide) return false;
     if (pitcherThrows && pitch.pitcherThrows !== pitcherThrows) return false;
     return true;
-  }), [periodPitches, role, team, effectivePlayerKey, pitchType, batterSide, pitcherThrows]);
+  }), [periodPitches, role, effectiveTeam, effectivePlayerKey, pitchType, batterSide, pitcherThrows]);
   const player = candidates.find((row) => row.key === effectivePlayerKey);
   const panels = season.startsWith("compare") ? SEASONS.filter(item => seasonKeys.includes(item.key)).reverse().map((item) => ({ title: item.label, pitches: filtered.filter((pitch) => pitch.seasonKey === item.key) })) : season === "combined" ? [{ title: seasonKeys.map(k=>catalog.seasons[k as SeasonKey]?.shortLabel).join("＋") + " 合算", pitches: filtered }] : batterSide ? [{ title: `${SEASONS.find((item) => item.key === season)?.label}・${batterSide}打者`, pitches: filtered }] : [
     { title: `${SEASONS.find((item) => item.key === season)?.label}・右打者`, pitches: filtered.filter((pitch) => pitch.batterSide === "右") },
@@ -109,7 +110,7 @@ export default function BarrelZoneView({ initialSeason = "2026-fall", initialDat
     <details className="barrel-definition chart-definition"><summary>指標の定義</summary><span>東都大学野球向けのBarrel相当条件（打球速度145km/h以上・打球角度10〜35度）を使用。MLB公式Barrelフラグではありません。</span></details>
     <div className="toolbar barrel-toolbar">
       <div className="segmented"><button className={role === "batting" ? "active" : ""} onClick={() => { setRole("batting"); setPlayerKey(""); }}>打者（生み出した）</button><button className={role === "pitching" ? "active" : ""} onClick={() => { setRole("pitching"); setPlayerKey(""); }}>投手（許した）</button></div>
-      <label>大学<select value={team} onChange={(event) => { setTeam(event.target.value); setPlayerKey(""); }}>{teams.map((value) => <option key={value}>{value}</option>)}</select></label>
+      <label>大学<select value={effectiveTeam} onChange={(event) => { setTeam(event.target.value); setPlayerKey(""); }}>{teams.map((value) => <option key={value}>{value}</option>)}</select></label>
       <label>{role === "batting" ? "打者" : "投手"}<select value={effectivePlayerKey} onChange={(event) => setPlayerKey(event.target.value)}><PlayerOptions players={candidates} valueKey="key" /></select></label>
       <label>シーズン<select value={season} onChange={(event) => setSeason(event.target.value as SeasonFilter)}>{SEASONS.map(s=><option key={s.key} value={s.key}>{s.shortLabel}（左右比較）</option>)}<option value="compare">直近2シーズン比較</option><option value="compare-previous">前の2シーズン比較</option><option value="combined">選択シーズンの合算</option></select></label>
       <label>球種<select value={pitchType} onChange={(event) => setPitchType(event.target.value)}><option value="">すべて</option>{pitchTypes.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -119,8 +120,9 @@ export default function BarrelZoneView({ initialSeason = "2026-fall", initialDat
     </div>
     {season==="combined" && <label>合算するシーズン<select multiple aria-label="合算するシーズン" value={seasonKeys} onChange={e=>setCombinedKeys([...e.target.selectedOptions].map(o=>o.value))}>{SEASONS.map(s=><option key={s.key} value={s.key}>{s.shortLabel}</option>)}</select></label>}
     <div className="segmented barrel-metric"><button className={metric === "swings" ? "active" : ""} onClick={() => setMetric("swings")}>Barrel相当 / Swings</button><button className={metric === "bip" ? "active" : ""} onClick={() => setMetric("bip")}>Barrel相当 / BIP</button></div>
+    {error && seasonKeys.every(key => datasets[key]) && <p role="alert">更新を取得できませんでした。前回のデータを表示しています。{error}</p>}
     {error && !seasonKeys.every(key => datasets[key]) ? <div className="empty-state"><h2>{error}</h2></div> : !seasonKeys.every(key => datasets[key]) ? <div className="loading-panel">シーズンデータを集計しています…</div> : <>
-      <div className="barrel-summary"><div><small>{role === "batting" ? "打者" : "投手"}</small><strong>{player?.kanji || player?.name || "—"}</strong><span>{team}</span></div><div><small>対象球</small><strong>{filtered.length.toLocaleString("ja-JP")}</strong><span>コース記録をフィルター後に集計</span></div></div>
+      <div className="barrel-summary"><div><small>{role === "batting" ? "打者" : "投手"}</small><strong>{player?.kanji || player?.name || "—"}</strong><span>{effectiveTeam}</span></div><div><small>対象球</small><strong>{filtered.length.toLocaleString("ja-JP")}</strong><span>コース記録をフィルター後に集計</span></div></div>
       <div className="barrel-heatmap-grid">{panels.map((panel) => <Heatmap key={panel.title} title={panel.title} pitches={panel.pitches} metric={metric} minimum={minimum} />)}</div>
       <div className="barrel-legend"><span>低い</span><i /><i /><i /><i /><i /><span>高い</span></div>
     </>}

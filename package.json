@@ -17,7 +17,7 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
     "prepare:data": "node scripts/prepare-data.mjs",
     "typecheck": "tsc --noEmit --incremental false",
-    "test:unit": "node --experimental-strip-types --test --test-concurrency=2 tests/*.test.ts tests/autumn-import.test.mjs tests/import-pipeline.test.mjs tests/catcher-view.test.mjs tests/drive-push.test.mjs tests/longevity/*.test.mjs",
+    "test:unit": "node --experimental-strip-types --test --test-concurrency=2 tests/*.test.ts tests/catalog-refresh.test.mjs tests/autumn-import.test.mjs tests/import-pipeline.test.mjs tests/catcher-view.test.mjs tests/drive-push.test.mjs tests/longevity/*.test.mjs",
     "trackman:sync": "node scripts/sync-autumn-data.mjs",
     "test:batting": "node --test tests/batting-ui.test.mjs tests/autumn-import.test.mjs",
     "test:autumn": "node --test tests/autumn-import.test.mjs tests/batting-ui.test.mjs tests/autumn-spin.test.mjs",
