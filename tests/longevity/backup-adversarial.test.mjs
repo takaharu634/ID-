@@ -50,3 +50,26 @@ test('export rejects config namespace, nonallowlisted tables and writes before t
   assert.equal((await backupExportResponse(new Request('https://example.test', { method: 'POST' }), bindings, guard)).status, 405);
   for (const key of ['datasets/v2/2026-spring/head.json', 'datasets/v2/staged/00000000-0000-0000-0000-000000000000.json', 'datasets/v3/verification/00000000-0000-0000-0000-000000000000.json', 'import-jobs/test/source.csv', 'datasets/v3/2026-spring/blocks/../secret']) assert.equal(restorableKey(key), false, key);
 });
+
+test('diagnostic logging is a fixed reason code and never emits token or arbitrary claim text', async () => {
+  const originalWarn = console.warn, lines = [];
+  console.warn = (...values) => lines.push(values);
+  try {
+    const signed = await token({ sub: 'sensitive-claim-value-must-not-appear' });
+    const cases = [
+      [new Request('https://example.test'), env, options, 'HEADER_MISSING'],
+      [new Request('https://example.test', { headers: { authorization: 'Basic secret-must-not-appear' } }), env, options, 'HEADER_SCHEME'],
+      [new Request('https://example.test', { headers: { authorization: 'Bearer malformed-secret-must-not-appear' } }), env, options, 'TOKEN_PARTS'],
+      [new Request('https://example.test', { headers: { authorization: 'Bearer ' + signed } }), env, options, 'CLAIM_SUBJECT'],
+      [new Request('https://example.test', { headers: { authorization: 'Bearer ' + await token() } }), env, { now, jwks: [] }, 'JWKS_KID'],
+    ];
+    for (const [request, bindings, settings, expected] of cases) {
+      const response = await backupExportGuard(request, bindings, settings);
+      assert.equal(response.status, 401);
+      assert.deepEqual(lines.at(-1), ['[backup-auth]', expected]);
+      assert.deepEqual(await response.json(), { error: 'バックアップ専用の認証が必要です。' });
+    }
+    assert.ok(!JSON.stringify(lines).includes('must-not-appear'));
+    assert.ok(!JSON.stringify(lines).includes(signed));
+  } finally { console.warn = originalWarn; }
+});

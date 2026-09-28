@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 const root=fileURLToPath(new URL('..',import.meta.url)).replace(/\/$/,'');
 const sha=value=>createHash('sha256').update(value).digest('hex');
 test('compiled backup recovery streams verified bytes and restores a missing future season only after explicit activation',{timeout:60000},async()=>{
@@ -32,5 +32,26 @@ test('compiled backup recovery streams verified bytes and restores a missing fut
   const activation=await mf.dispatchFetch('http://test.local/api/upload',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({action:'restore',season,id,expectedActive:null})});assert.equal(activation.status,200,await activation.text());
   const restored=await mf.dispatchFetch(`http://test.local/api/dataset?season=${season}&format=csv`,{headers});assert.equal(restored.status,200);assert.deepEqual(Buffer.from(await restored.arrayBuffer()),Buffer.from(raw));
   const catalog=await(await mf.dispatchFetch('http://test.local/api/seasons')).json();assert.ok(catalog.seasons.some(s=>s.key===season));
+ }finally{await mf.dispose();}
+});
+
+// Exercise native Workers fetch, including options validation, without external DNS.
+test('Workers OIDC fetch accepts manual redirect mode, rejects 302 and verifies signed identity',{timeout:30000},async()=>{
+ const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+ const jwk={...publicKey.export({format:'jwk'}),kid:'isolated-runtime-key',alg:'RS256',use:'sig'},seconds=Math.floor(Date.now()/1000);
+ const env={BACKUP_OIDC_ENABLED:'true',BACKUP_GITHUB_REPOSITORY_ID:'1380720373',BACKUP_GITHUB_OWNER_ID:'319011362',BACKUP_GITHUB_BRANCH:'main',BACKUP_OIDC_AUDIENCE:'https://test.local/api/backup/export',BACKUP_OIDC_SUBJECT:'repo:takaharu634@319011362/ID-touto-@1380720373:ref:refs/heads/main'};
+ const claims={iss:'https://token.actions.githubusercontent.com',aud:env.BACKUP_OIDC_AUDIENCE,sub:env.BACKUP_OIDC_SUBJECT,repository_id:env.BACKUP_GITHUB_REPOSITORY_ID,repository_owner_id:env.BACKUP_GITHUB_OWNER_ID,repository:'takaharu634/ID-touto-',repository_visibility:'private',ref:'refs/heads/main',ref_type:'branch',workflow_ref:'takaharu634/ID-touto-/.github/workflows/backup-datasets.yml@refs/heads/main',event_name:'push',runner_environment:'github-hosted',iat:seconds,nbf:seconds-300,exp:seconds+300};
+ const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+ const input=`${encode({alg:'RS256',kid:jwk.kid})}.${encode(claims)}`,token=`${input}.${sign('RSA-SHA256',Buffer.from(input),privateKey).toString('base64url')}`;
+ let redirect=true,calls=0;
+ const mf=new Miniflare({modules:[{type:'ESModule',path:root+'/server/backup-test-entry.mjs',contents:"import {backupExportGuard} from './backup-auth.mjs'; export default {async fetch(request,env){return await backupExportGuard(request,env)||Response.json({verified:true});}};"},{type:'ESModule',path:root+'/server/backup-auth.mjs',contents:await fs.readFile(root+'/server/backup-auth.mjs','utf8')}],compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:env,outboundService:async request=>{
+   calls++;assert.equal(request.url,'https://token.actions.githubusercontent.com/.well-known/jwks');
+   return redirect?new Response(null,{status:302,headers:{location:'https://untrusted.test/jwks'}}):Response.json({keys:[jwk]});
+ },port:0});
+ try{
+  const headers={authorization:`Bearer ${token}`};
+  assert.equal((await mf.dispatchFetch('https://test.local/api/backup/export',{headers})).status,401);
+  assert.equal(calls,1,'redirect must not be followed');redirect=false;
+  const valid=await mf.dispatchFetch('https://test.local/api/backup/export',{headers});assert.equal(valid.status,200,await valid.text());assert.equal(calls,2);
  }finally{await mf.dispose();}
 });

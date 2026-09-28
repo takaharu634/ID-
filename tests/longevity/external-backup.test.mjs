@@ -22,8 +22,9 @@ test('backup OIDC accepts only signed pinned private main workflow identity',asy
 });
 test('backup auth fails closed and JWKS rotation uses fixed trusted endpoint',async()=>{
   const denied=await backupExportGuard(new Request('https://x.test'),env);assert.equal(denied.status,401);assert.equal(denied.headers.get('cache-control'),'no-store');
-  let url;await verifyBackupToken(jwt(),env,{now,fetcher:async u=>{url=u;return Response.json({keys:[jwk]});}});assert.equal(url,'https://token.actions.githubusercontent.com/.well-known/jwks');
+  let url;await verifyBackupToken(jwt(),env,{now,fetcher:async (u,options)=>{url=u;assert.equal(options.redirect,'manual');return Response.json({keys:[jwk]});}});assert.equal(url,'https://token.actions.githubusercontent.com/.well-known/jwks');
   await assert.rejects(verifyBackupToken(jwt({}, {kid:'rotated'}),env,{now,fetcher:async()=>Response.json({keys:[]})}));
+  await assert.rejects(verifyBackupToken(jwt({}, {kid:'redirected'}),env,{now,fetcher:async(u,options)=>{assert.equal(u,'https://token.actions.githubusercontent.com/.well-known/jwks');assert.equal(options.redirect,'manual');return new Response(null,{status:302,headers:{location:'https://other.test/jwks'}});}}));
 });
 class Bucket{
   constructor(entries=[]){this.map=new Map(entries.map(([key,value])=>[key,Buffer.from(value)]));this.writes=[];}
