@@ -684,12 +684,12 @@ export default function PitchSpinProfile({ season, playerId, playerName, pitches
     return <section className="spin-embed"><div className={`data-status-card ${dataState}`} role="status"><span className="status-ball" /><div><strong>{dataState === "error" ? "回転データを読み込めませんでした" : "回転データを読み込み中"}</strong><p>{dataState === "error" ? "ページを再読み込みしてください。" : "実測値と推定3D回転を準備しています。"}</p></div></div></section>;
   }
   if (!profile || !displayProfile) {
-    return <section className="spin-embed"><div className="data-status-card"><div><strong>この条件に回転数・回転軸の計測データがありません</strong><p>上部の分析条件を緩めると表示できる場合があります。未計測の回転は作成しません。</p></div></div></section>;
+    return <section className="spin-embed"><div className="data-status-card"><div><strong>選択シーズンに回転数・回転軸の計測データがありません</strong><p>別のシーズンを選択してください。</p></div></div></section>;
   }
 
   return (
     <section className="spin-embed" style={{ "--pitch-color": displayProfile.color, "--navy": "#0b1f42" } as CSSProperties}>
-      <header className="spin-embed-heading"><div><span>TRACKMAN SPIN LAB</span><h2>{playerName}｜回転アニメーション</h2><p>現在の分析条件に一致した回転計測 {playerPitches.length} 球</p></div><b>投手後方視点</b></header>
+      <header className="spin-embed-heading"><div><span>TRACKMAN SPIN LAB</span><h2>{playerName}｜回転アニメーション</h2><p>選択シーズンの回転計測 {playerPitches.length} 球</p></div><b>投手後方視点</b></header>
       <nav className="pitch-tabs" aria-label="回転を表示する球種">
         {pitchProfiles.map((item) => <button key={item.id} type="button" className={item.id === profile.id ? "active" : ""} onClick={() => { setSelectedId(item.id); setPitchIndex(0); }}><span className="pitch-code" style={{ backgroundColor: item.color }}>{item.short}</span><span className="pitch-name">{item.label}</span><span className="pitch-count">n={item.count}</span></button>)}
       </nav>

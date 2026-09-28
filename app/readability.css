@@ -90,3 +90,11 @@
   body:not(.print-document) .batter-profile-middle { grid-template-columns: minmax(0,1fr); }
   body:not(.print-document) .batter-profile-heading dl { flex-basis: 100%; }
 }
+
+/* Player pitch charts keep selectors and centimetre scales readable. */
+.pitch-location-side { margin-bottom: 14px; }
+@media screen {
+  body:not(.print-document) .pitch-location-side { flex-wrap: nowrap; }
+  body:not(.print-document) .pitch-location-side button { flex: 0 1 auto; white-space: nowrap; }
+}
+.release-plot svg text { font-size: 14px; }

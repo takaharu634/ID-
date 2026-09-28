@@ -24,12 +24,12 @@ before(async () => {
   const contents = await readFile(resolve(root, 'app/savant-app.tsx'), 'utf8');
   const result = await build({
     stdin: { contents: contents + '\nexport { HomeView, LeaderboardsView, PlayerView, SprayChart, RollingChart, boardConfig, batterPitchTypeRows, PercentilePanel, deriveBatterSummary, DeltaViewPanel, DeltaMetricCard };', resolveDir: resolve(root, 'app'), loader: 'tsx' },
-    bundle: true, write: false, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic', logLevel: 'silent',
+    bundle: true, write: false, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic', loader: { '.css': 'empty' }, logLevel: 'silent',
   });
   const entry = resolve(scratch, 'app.mjs');
   await writeFile(entry, result.outputFiles[0].text);
   app = await import(pathToFileURL(entry).href);
-  const barrel = await build({ entryPoints: [resolve(root, 'app/barrel-zone.tsx')], bundle: true, write: false, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic', logLevel: 'silent' });
+  const barrel = await build({ entryPoints: [resolve(root, 'app/barrel-zone.tsx')], bundle: true, write: false, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic', loader: { '.css': 'empty' }, logLevel: 'silent' });
   const barrelEntry = resolve(scratch, 'barrel.mjs'); await writeFile(barrelEntry, barrel.outputFiles[0].text);
   BarrelView = (await import(pathToFileURL(barrelEntry).href)).default;
   data = JSON.parse(await readFile(resolve(root, 'public/data/season-2026-fall.json'), 'utf8'));
