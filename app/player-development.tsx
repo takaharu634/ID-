@@ -47,7 +47,7 @@ export function PitcherDevelopment({ pitches, allPitcherPitches, leaguePitches, 
       <Table rows={report.pitchTypes} columns={[c('pitchType', '球種'), c('heartShare', 'Heart%', 'rate'), c('edgeShare', 'Edge%', 'rate'), c('chaseShare', 'Chase%', 'rate'), c('wasteShare', 'Waste%', 'rate'), c('locatedPitches', '位置計測')]} />
     </> : <>
       <h2>登板内の球速維持</h2>
-      <div className="toolbar"><label>登板<select aria-label="球速維持の登板" value={selectedGame} onChange={e => setGame(e.target.value)}>{games.map(([id, date]) => <option key={id} value={id}>{date}</option>)}</select></label></div>
+      <div className="toolbar"><label>登板<select aria-label="球速維持の登板" disabled={!games.length} value={selectedGame} onChange={e => setGame(e.target.value)}>{!games.length && <option value="">対象の登板なし</option>}{games.map(([id, date]) => <option key={id} value={id}>{date}</option>)}</select></label></div>
       <div className="development-values">{report.maintenance.filter(p => p.gameId === selectedGame).map(p => <Value key={p.pitchType} label={`${p.pitchType} 球速維持率`} value={p.velocityRetention} format="rate" sample={`序盤 ${p.early.toFixed(1)} → 後半 ${p.late.toFixed(1)} km/h`} />)}</div>
       {!report.maintenance.some(p => p.gameId === selectedGame) && <p className="development-empty">維持率は1〜15球目と61球目以降に、同じ球種の球速計測が各3球以上ある登板で表示します。</p>}
       <Table rows={report.workload.filter(p => p.gameId === selectedGame)} columns={[c('pitchType', '球種'), c('segment', '登板球数'), c('pitches', '球数'), c('velocity', '平均球速 km/h'), c('ivb', 'IVB cm'), c('extension', 'Extension cm'), c('releaseHeight', '高さ cm')]} />

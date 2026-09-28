@@ -1,5 +1,25 @@
 /* Screen typography stays separate from the fixed-size print document. */
 @media screen {
+  body:not(.print-document) .site-shell :is(button,a,input,select,summary):focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+  body:not(.print-document) .header-top > * { min-width: 0; }
+  body:not(.print-document) .global-search { min-width: 0; }
+  body:not(.print-document) .global-search:focus-within { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+  body:not(.print-document) .global-search .search-icon { flex: none; }
+  body:not(.print-document) .global-search input { min-width: 0; font-size: 1rem; }
+  body:not(.print-document) .global-search input:focus-visible { outline: none; }
+  body:not(.print-document) .season-picker select { min-width: 0; max-width: 100%; min-height: 44px; font-size: .875rem; }
+  body:not(.print-document) :is(.toolbar,.filter-panel,.player-filter-panel,.compare-controls,.visual-selector) { min-width: 0; }
+  body:not(.print-document) :is(.toolbar,.filter-panel,.player-filter-panel,.compare-controls) label { min-width: 0; max-width: 100%; font-size: .875rem; }
+  body:not(.print-document) :is(.toolbar,.filter-panel,.player-filter-panel,.compare-controls,.visual-selector,.development-select) :is(select,input:not([type="checkbox"]):not([type="radio"])) { min-width: 0; max-width: 100%; min-height: 44px; height: auto; font-size: 1rem; }
+  body:not(.print-document) :is(.toolbar,.filter-panel,.player-filter-panel,.compare-controls) label > :is(select,input:not([type="checkbox"]):not([type="radio"])) { width: 100%; }
+  body:not(.print-document) .player-filter-panel > header button { min-height: 44px; padding-inline: 10px; font-size: .875rem; }
+  body:not(.print-document) .segmented { max-width: 100%; flex-wrap: wrap; }
+  body:not(.print-document) .segmented button { min-width: 0; min-height: 44px; flex: 1 1 72px; }
+  body:not(.print-document) :is(.segmented,.batter-profile-mode) button.active { background: var(--teal-dark); }
+  body:not(.print-document) .table-scroll { min-width: 0; max-width: 100%; }
+  body:not(.print-document) .development-value { min-width: 0; overflow-wrap: anywhere; }
+  body:not(.print-document) .development-value > strong { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem; }
+  body:not(.print-document) .development-value strong small { margin-left: 0; }
   body:not(.print-document) .data-table { font-size: .875rem; font-variant-numeric: tabular-nums; }
   body:not(.print-document) .data-table td small { font-size: .75rem; }
   body:not(.print-document) .batter-profile-workspace { grid-template-columns: minmax(0,1fr); font-variant-numeric: tabular-nums; }
@@ -54,6 +74,18 @@
   body:not(.print-document) .batter-profile-detail-summary span { font-size: .875rem; }
 }
 @media screen and (max-width: 720px) {
+  body:not(.print-document) .desktop-nav { display: flex; overflow-x: auto; gap: 4px; }
+  body:not(.print-document) .desktop-nav button { flex: none; white-space: nowrap; padding-inline: 12px; }
+  body:not(.print-document) .leader-menu > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; }
+  body:not(.print-document) .leader-menu h3 { grid-column: 1/-1; }
+  body:not(.print-document) .leader-menu button { min-height: 44px; overflow-wrap: anywhere; }
+  body:not(.print-document) .header-top { grid-template-columns: minmax(0,1fr) 44px 44px; }
+  body:not(.print-document) .sound-button { width: 44px; height: 44px; }
+  body:not(.print-document) .season-picker select { font-size: 1rem; }
+  body:not(.print-document) .toolbar > label:not(.shift-candidates) { flex: 1 1 160px; }
+  body:not(.print-document) .toolbar > .segmented { flex: 0 1 auto; }
+  body:not(.print-document) .player-hero { grid-template-columns: 76px minmax(0,1fr); }
+  body:not(.print-document) .player-hero > div { min-width: 0; overflow-wrap: anywhere; }
   body:not(.print-document) .batter-profile-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
   body:not(.print-document) .batter-profile-middle { grid-template-columns: minmax(0,1fr); }
   body:not(.print-document) .batter-profile-heading dl { flex-basis: 100%; }

@@ -557,7 +557,7 @@ function Header({ searchText, setSearchText, suggestions, onPlayer, navigate, on
             </div>
           )}
         </div>
-        <button className="sound-button" onClick={() => onMuted(!muted)} aria-label={muted ? "効果音をオンにする" : "効果音をオフにする"}>{muted ? "🔇" : "🔊"}</button>
+        <button className="sound-button" aria-pressed={!muted} onClick={() => onMuted(!muted)} aria-label={muted ? "効果音をオンにする" : "効果音をオフにする"}>{muted ? "🔇" : "🔊"}</button>
         <button className="menu-button" onClick={onMenu} aria-label="メニューを開く"><span /><span /><span /></button>
       </div>
       <nav className="desktop-nav" aria-label="主要メニュー">
@@ -1949,8 +1949,8 @@ function PlayerView({ season, data, player, navigate, news }: { season: SeasonKe
         <div><p>{player.team}</p><h1>{player.kanji || player.name}</h1><h2>{player.romanName ?? player.name}</h2><span>{roleLabel(player)}</span></div>
         {role === "投手" && <button className="secondary-button" onClick={() => navigate({ view: "compare", playerId: player.id })}>選手比較に進む</button>}
       </section>
-      {roles.length > 1 && <div className="role-tabs">{roles.map((value: string) => <button key={value} className={role === value ? "active" : ""} onClick={() => { setRole(value); setTab("概要"); }}>{value}</button>)}</div>}
-      <div className="player-tabs" role="tablist">{tabs.map((value) => <button key={value} className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{value}</button>)}</div>
+      {roles.length > 1 && <div className="role-tabs" role="group" aria-label="選手種別">{roles.map((value: string) => <button key={value} className={role === value ? "active" : ""} aria-pressed={role === value} onClick={() => { setRole(value); setTab("概要"); }}>{value}</button>)}</div>}
+      <div className="player-tabs" role="group" aria-label="選手の分析">{tabs.map((value) => <button key={value} className={tab === value ? "active" : ""} aria-pressed={tab === value} onClick={() => setTab(value)}>{value}</button>)}</div>
       {role !== "捕手" && tab !== "PITCHスコア" && tab !== "NEWS" && <PlayerFilters filters={filters} setFilters={setFilters} data={data} role={role} />}
       {role === "投手" && tab === "PITCHスコア" && <div className="analysis-scope"><span>集計範囲</span><strong>{seasonInfo(season).label}・シーズン全体</strong></div>}
       {role === "投手" && filteredPitcher && <PitcherTab tab={tab} season={season} player={tab === "PITCHスコア" ? player.pitching : filteredPitcher} pitches={pitcherPitches} allPitches={allRolePitches} arsenal={arsenal} benchmarks={benchmarks.pitching} filtersActive={filtersActive} spinPitchType={spinPitchType} onOpenSpin={(pitchType) => { setSpinPitchType(pitchType); setTab("回転"); }} />}
