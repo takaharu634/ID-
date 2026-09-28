@@ -2,6 +2,7 @@ import { isSeasonKey } from '../lib/seasons.mjs';
 import { sha256, writeObject, openObject, verifyObject, putVerified, objectReferences } from './object-store.mjs';
 export { sha256 } from './object-store.mjs';
 const headKey = season => `datasets/v2/${season}/head.json`;
+const VERIFICATION_VERSION = 2;
 const safeId = id => typeof id === 'string' && /^[a-f0-9-]{36}$/.test(id);
 export async function readHead(bucket, season) {
   if (!isSeasonKey(season)) throw new Error('シーズンが不正です。');
@@ -76,7 +77,7 @@ async function switchHead(bucket, season, h, next) {
 export async function verifySnapshot(bucket, v) {
   if (!safeId(v.id) || !isSeasonKey(v.season)) throw new Error('保存版の識別子が不正です。');
   const receipt=await bucket.get(`datasets/v3/verification/${v.id}.json`);
-  if(receipt) {const proof=await receipt.json();if(proof.complete && proof.snapshotHash===await sha256(JSON.stringify(v)) && proof.checkedAt>Date.now()-3600000)return;}
+  if(receipt) {const proof=await receipt.json();if(proof.version===VERIFICATION_VERSION && proof.complete && proof.snapshotHash===await sha256(JSON.stringify(v)) && proof.checkedAt>Date.now()-3600000)return;}
   for (const kind of ['raw', 'summary', 'spin', ...['input','report','sources'].filter(k=>v.objects[k])]) {
     const ref=v.objects[kind];
     const extension=kind==='raw'||kind==='input'?'csv':'json';
@@ -96,10 +97,10 @@ export async function advanceVerification(bucket, snapshot) {
   }
   const key=`datasets/v3/verification/${snapshot.id}.json`,snapshotHash=await sha256(JSON.stringify(snapshot));
   const saved=await bucket.get(key),prior=saved?await saved.json():null;
-  const offset=prior?.snapshotHash===snapshotHash && prior.checkedAt>Date.now()-3600000?prior.offset:0;
+  const offset=prior?.version===VERIFICATION_VERSION && prior.snapshotHash===snapshotHash && prior.checkedAt>Date.now()-3600000 && Number.isSafeInteger(prior.offset) && prior.offset>=0 && prior.offset<=refs.length ? prior.offset : 0;
   const end=Math.min(refs.length,offset+80);
   for(let i=offset;i<end;i++) await verifyObject(bucket,refs[i]);
-  const result={snapshotHash,offset:end,total:refs.length,complete:end===refs.length,checkedAt:Date.now()};
+  const result={version:VERIFICATION_VERSION,snapshotHash,offset:end,total:refs.length,complete:end===refs.length,checkedAt:Date.now()};
   await bucket.put(key,JSON.stringify(result),{httpMetadata:{contentType:'application/json'}});
   return result;
 }
@@ -107,6 +108,9 @@ export async function advanceStageVerification(bucket,id) {
   if(!safeId(id))throw new Error('検証IDが不正です。');
   const object=await bucket.get(`datasets/v2/staged/${id}.json`);if(!object)throw new Error('検証結果が見つかりません。');
   const stage=await object.json();
+  // A successful commit remains retryable after its response was lost.
+  const head=await readHead(bucket,stage.snapshot.season);
+  if(head.active===id)return {version:VERIFICATION_VERSION,complete:true,offset:0,total:0,alreadyCommitted:true};
   if(stage.expiresAt<Date.now())throw new Error('検証期限が切れました。CSVを再検証してください。');
   if(stage.previous) {const previous=await advanceVerification(bucket,stage.previous);if(!previous.complete)return previous;}
   return advanceVerification(bucket,stage.snapshot);

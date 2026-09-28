@@ -1,11 +1,12 @@
 import { applyPitchQuality } from '../../../lib/pitch-quality.mjs';
 import { adminApiGuard } from '../../admin-auth';
 import { bundledSeasonCsv } from '../../../server/import-baseline';
-import { activeObject, findSnapshot } from '../../../server/import-store.mjs';
+import { readHead, findSnapshot, sha256 } from '../../../server/import-store.mjs';
 import { isSeasonKey, seasonLabel } from '../../../lib/seasons.mjs';
 import { listSeasons } from '../../../server/season-catalog.mjs';
 import { openObject } from '../../../server/object-store.mjs';
 import bundledSeasons from '../../../lib/generated/seasons.json';
+import { bundledDatasetVersion } from '../../../lib/public-data-version.mjs';
 export const runtime = 'edge';
 export async function GET(request: Request) {
   const { env } = await import('cloudflare:workers');
@@ -28,7 +29,21 @@ export async function GET(request: Request) {
         if(!row.objects[kind])return Response.json({error:'この保存版には指定された原本がありません。'},{status:404,headers});
         object = await openObject(storage.BUCKET,row.objects[kind]);
         if (!object) throw new Error('保存版が見つかりません。');
-      } else object = await activeObject(storage.BUCKET,season,kind);
+        headers['x-dataset-version'] = row.id;
+        headers['x-dataset-season'] = season;
+      } else {
+        // Open the exact row that supplies the identity header. Reading the head a
+        // second time could label one publication's bytes with a newer version.
+        const head = await readHead(storage.BUCKET, season);
+        if (head.active) {
+          const row = head.versions.find((item: { id: string }) => item.id === head.active);
+          if (!row?.objects[kind]) throw new Error('公開中の保存版が見つかりません。');
+          object = await openObject(storage.BUCKET, row.objects[kind]);
+          if (!object) throw new Error('保存版のデータが見つかりません。');
+          headers['x-dataset-version'] = row.id;
+          headers['x-dataset-season'] = season;
+        }
+      }
       if (object && !('chunked' in object) && format === 'json' && !version) return Response.json(applyPitchQuality(await object.json()), {headers});
       if (object) return new Response(object.body as unknown as ReadableStream<Uint8Array>,{headers});
       if(['sources','input'].includes(format))return Response.json({error:'入力原本がありません。'},{status:404,headers});
@@ -37,6 +52,8 @@ export async function GET(request: Request) {
       if (old) {
         const text = await old.text();
         if (JSON.parse(text).metadata?.season === seasonLabel(season)) {
+          headers['x-dataset-version'] = `legacy:${await sha256(text)}`;
+          headers['x-dataset-season'] = season;
           if (format === 'json') return Response.json(applyPitchQuality(JSON.parse(text)),{headers});
           if (csv) { const raw = await storage.BUCKET.get('datasets/current.csv'); if (!raw) throw new Error('以前のCSVが見つかりません。'); return new Response(raw.body as unknown as ReadableStream<Uint8Array>,{headers}); }
           // Legacy uploads had no paired spin snapshot. Do not mix versions silently.
@@ -45,6 +62,10 @@ export async function GET(request: Request) {
       }
     }
     if (!bundledSeasons.includes(season)) return new Response(null,{status:204,headers});
+    const bundledVersion = bundledDatasetVersion(season);
+    if (!bundledVersion) throw new Error('同梱データの識別子がありません。');
+    headers['x-dataset-version'] = bundledVersion;
+    headers['x-dataset-season'] = season;
     if (csv) return new Response(await bundledSeasonCsv(season),{headers});
     return new Response(null,{status:204,headers});
   } catch { return Response.json({error:'最新の保存データを取得できませんでした。'},{status:503,headers}); }

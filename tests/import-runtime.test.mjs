@@ -8,7 +8,7 @@ test('compiled Workers API preserves authorization, stores real data and restore
 const modules=(await fs.readdir(root+'/dist/server',{recursive:true})).filter(f=>f.endsWith('.js')).map(f=>({type:'ESModule',path:root+'/dist/server/'+f})).sort((a,b)=>Number(b.path.endsWith('/server/index.js'))-Number(a.path.endsWith('/server/index.js')));
 const mf=new Miniflare({modules,compatibilityDate:'2026-05-01',compatibilityFlags:['nodejs_compat'],r2Buckets:['BUCKET'],bindings:{ADMIN_EMAILS:'admin@example.test'},serviceBindings:{ASSETS:async request=>{try{const p=new URL(request.url).pathname;return new Response(await fs.readFile(root+'/public'+p));}catch{return new Response(null,{status:404});}}},port:0});
 try {
- for(const path of ['/api/upload','/api/imports','/api/import-storage?key=datasets/v2/2026-fall/head.json','/api/dataset?format=csv']) {
+ for(const path of ['/api/upload','/api/imports','/api/import-jobs','/api/import-storage?key=datasets/v2/2026-fall/head.json','/api/dataset?format=csv']) {
   const method=path==='/api/upload'?'POST':'GET';
   const anonymous=await mf.dispatchFetch('http://test.local'+path,{method});assert.equal(anonymous.status,401,path);
   const other=await mf.dispatchFetch('http://test.local'+path,{method,headers:{'oai-authenticated-user-email':'other@example.test'}});assert.equal(other.status,403,path);
@@ -17,6 +17,7 @@ try {
  const page=await mf.dispatchFetch('http://test.local/admin');assert.equal(page.status,200);assert.match(await page.text(),/signin-with-chatgpt/);console.log('Login entry renders');
  const logged=await mf.dispatchFetch('http://test.local/admin',{headers:{'oai-authenticated-user-email':'admin@example.test'}});assert.equal(logged.status,200);assert.match(await logged.text(),/CSVデータ管理/);console.log('Authorized admin page renders');
  const publicData=await mf.dispatchFetch('http://test.local/api/dataset?season=2026-fall');assert.equal(publicData.status,204);
+ assert.equal(publicData.headers.get('x-dataset-season'),'2026-fall');assert.match(publicData.headers.get('x-dataset-version'),/^bundled:[a-f0-9]{64}:[a-f0-9]{64}$/);
  console.log('Uninitialized per-season dataset explicitly returns 204');
  const {prepareImport}=await import(root+'/server/import-service.mjs');
  const {csvRows,encodeCsv}=await import(root+'/lib/import-validation.mjs');
@@ -25,6 +26,17 @@ try {
   get:async key=>{const r=await mf.dispatchFetch('http://test.local/api/import-storage?key='+encodeURIComponent(key),{headers});if(r.status===404)return null;assert.equal(r.status,200);return {etag:r.headers.get('etag'),text:async()=>new TextDecoder('utf-8',{ignoreBOM:true}).decode(await r.arrayBuffer()),json:()=>r.json()};},
   put:async(key,text,options)=>{const r=await mf.dispatchFetch('http://test.local/api/import-storage?key='+encodeURIComponent(key),{method:'PUT',headers:{...headers,'x-content-sha256':options.sha256,'x-content-bytes':String(Buffer.byteLength(text)),'content-type':'text/plain'},body:text});assert.equal(r.status,200,await r.clone().text());return r.json();}
  };
+ const jobSource='test source\n',jobHash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(jobSource));
+ const jobSha=[...new Uint8Array(jobHash)].map(x=>x.toString(16).padStart(2,'0')).join('');
+ const jobHeaders={...headers,'content-type':'application/json','origin':'http://test.local'};
+ const createdResponse=await mf.dispatchFetch('http://test.local/api/import-jobs',{method:'POST',headers:jobHeaders,body:JSON.stringify({action:'create',files:[{name:'isolated.csv',size:Buffer.byteLength(jobSource),season:'2035-spring',sha256:jobSha}]})});
+ assert.equal(createdResponse.status,200,await createdResponse.clone().text());const created=await createdResponse.json();
+ const chunkResponse=await mf.dispatchFetch('http://test.local/api/import-jobs?id='+created.job.id+'&file=0&chunk=0',{method:'PUT',headers:{...headers,'origin':'http://test.local','x-content-bytes':String(Buffer.byteLength(jobSource)),'x-content-sha256':jobSha,'x-job-revision':String(created.job.revision),'x-job-token':created.token},body:jobSource});
+ assert.equal(chunkResponse.status,200,await chunkResponse.clone().text());const storedJob=(await chunkResponse.json()).job;
+ const jobOriginal=await mf.dispatchFetch('http://test.local/api/import-jobs?id='+created.job.id+'&file=0',{headers});assert.equal(jobOriginal.status,200);assert.equal(await jobOriginal.text(),jobSource);
+ const cancelled=await mf.dispatchFetch('http://test.local/api/import-jobs',{method:'POST',headers:jobHeaders,body:JSON.stringify({action:'cancel',id:created.job.id,revision:storedJob.revision,token:created.token})});assert.equal(cancelled.status,200,await cancelled.clone().text());
+ assert.equal((await mf.dispatchFetch('http://test.local/api/import-jobs?id='+created.job.id+'&file=0',{headers})).status,410);
+ console.log('Compiled job API preserves original bytes, enforces admin identity and cancels without publishing');
  const season='2026-spring',raw=await fs.readFile(root+'/data/raw/season-2026-spring.csv','utf8'),parsed=csvRows(raw);
  const row={...parsed.rows.at(-1),PitchUID:crypto.randomUUID(),PitchNo:'9999'};if(!row.Date)row.Date=parsed.rows.find(r=>r.GameUID===row.GameUID&&r.Date).Date;
  const baseline={raw,summary:await fs.readFile(root+'/public/data/season-2026-spring.json','utf8'),spin:await fs.readFile(root+'/public/data/spin-2026-spring.json','utf8')};
@@ -32,6 +44,9 @@ try {
  const requestAction=async body=>{for(let attempt=0;attempt<100;attempt++){const r=await mf.dispatchFetch('http://test.local/api/upload',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify(body)});if(r.status!==202)return r;await r.text();}assert.fail('verification did not finish');};
  const commit=await requestAction({action:'commit',id:stage.id,acknowledgeWarnings:true});assert.equal(commit.status,200,await commit.clone().text());
  const current=await mf.dispatchFetch('http://test.local/api/dataset?season='+season);const value=await current.json();assert.equal(value.pitches.length,11944);console.log('Real 11,943-pitch spring baseline + one test pitch committed through compiled API');
+ assert.equal(current.headers.get('x-dataset-version'),stage.id);assert.equal(current.headers.get('x-dataset-season'),season);
+ const pairedSpin=await mf.dispatchFetch('http://test.local/api/dataset?season='+season+'&format=spin');assert.equal(pairedSpin.headers.get('x-dataset-version'),stage.id);assert.ok(Array.isArray(await pairedSpin.json()));
+ assert.equal((await mf.dispatchFetch('http://test.local/api/dataset?season='+season+'&version='+stage.id)).status,401);
  const input=await mf.dispatchFetch(`http://test.local/api/dataset?season=${season}&format=input`,{headers});assert.equal(input.status,200);assert.match(input.headers.get('content-type'),/^text\/csv/);assert.equal(await input.text(),encodeCsv(parsed.headers,[row]));
  const history=await (await mf.dispatchFetch('http://test.local/api/imports',{headers})).json();assert.equal(history.imports.length,2);const original=history.imports.find(v=>!v.isActive);
  const restore=await requestAction({action:'restore',id:original.id,season,expectedActive:stage.id});assert.equal(restore.status,200,await restore.clone().text());

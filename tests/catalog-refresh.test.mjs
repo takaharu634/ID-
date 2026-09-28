@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
+import { publicSummary } from './fixtures/public-data.mjs';
 
 test('a changed catalog invalidates current data, unchanged catalogs retain identity, and failed loads retry', async () => {
   const original = globalThis.fetch;
@@ -11,7 +12,8 @@ test('a changed catalog invalidates current data, unchanged catalogs retain iden
     if (url === '/api/seasons') return Response.json({ seasons: [{ key: '2035-spring' }], latest: '2035-spring', revision });
     calls++;
     if (fail) throw new Error('network');
-    return Response.json({ schemaVersion: 7, metadata: { revision }, pitches: [], players: [] });
+    const data = publicSummary(); data.metadata.revision = revision;
+    return Response.json(data);
   };
   try {
     const output = await build({ stdin: { contents: `export { refreshSeasonCatalog } from './lib/season-catalog'; export { loadStaticDataset } from './lib/dataset-loader';`, resolveDir: resolve(import.meta.dirname, '..'), loader: 'ts' }, bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external' });
@@ -33,4 +35,31 @@ test('a changed catalog invalidates current data, unchanged catalogs retain iden
     assert.equal((await loadStaticDataset(path)).metadata.revision, 'added-game');
     assert.equal(calls, 3);
   } finally { globalThis.fetch = original; }
+});
+
+test('catalog write quota failure cannot regress the latest known live seasons after network loss', async () => {
+  const originalFetch = globalThis.fetch, originalCaches = globalThis.caches;
+  const stored = new Map(); let writesFail = false, online = true, latest = '2035-spring';
+  globalThis.caches = { open: async () => ({
+    put: async (key, response) => { if (writesFail) throw new Error('quota exceeded'); stored.set(key, response.clone()); },
+    match: async key => stored.get(key)?.clone(),
+  }) };
+  globalThis.fetch = async url => {
+    assert.equal(url, '/api/seasons'); if (!online) throw new Error('offline');
+    return Response.json({ seasons: [{ key: latest }], latest, revision: latest });
+  };
+  try {
+    const output = await build({ stdin: { contents: `export { refreshSeasonCatalog } from './lib/season-catalog';`, resolveDir: resolve(import.meta.dirname, '..'), loader: 'ts' }, bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external' });
+    const module = { exports: {} };
+    new Function('require', 'module', 'exports', output.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
+    const { refreshSeasonCatalog } = module.exports;
+    assert.equal((await refreshSeasonCatalog()).latest, '2035-spring');
+    latest = '2040-fall'; writesFail = true;
+    const recent = await refreshSeasonCatalog();
+    assert.equal(recent.latest, '2040-fall');
+    online = false;
+    const fallback = await refreshSeasonCatalog();
+    assert.equal(fallback.latest, '2040-fall');
+    assert.equal(fallback, recent, 'the current in-memory catalog retains identity during an outage');
+  } finally { globalThis.fetch = originalFetch; if (originalCaches === undefined) delete globalThis.caches; else globalThis.caches = originalCaches; }
 });

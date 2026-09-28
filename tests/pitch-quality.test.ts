@@ -6,6 +6,7 @@ import { meanOf, sdOf } from '../lib/numeric-summary.ts';
 import { createDatasetLoader } from '../lib/dataset-loader.ts';
 import { packDataset } from '../lib/dataset-transport.js';
 import { buildDatasetFromCsv } from '../lib/csv-analytics.js';
+import { repairLegacyAggregates } from '../lib/repair-legacy-aggregates.ts';
 
 test('missing measurements do not become zero in averages, SD, or scoring', () => {
   const values = [{v:140},{v:150},{v:null},{v:''},{v:' '},{v:undefined},{v:NaN}];
@@ -41,8 +42,11 @@ test('all seasons have meaningful spread and consistent score projections, prese
     assert.equal(next.highlights.pitchingPlus.pitchingPlus,Math.max(...qualified.map((p:any)=>p.pitchingPlus)));
     const current = createDatasetLoader(async()=>Response.json(source),true);
     const compact = createDatasetLoader(async()=>Response.json(packDataset(source)));
-    assert.deepEqual(await current(`/data/season-${season}.json`), next);
-    assert.deepEqual(await compact(`/data/season-${season}.json`), next);
+    // Data readers also repair legacy measurement aggregates; direct score
+    // assertions above continue to test applyPitchQuality in isolation.
+    const normalized = applyPitchQuality(repairLegacyAggregates(source));
+    assert.deepEqual(await current(`/data/season-${season}.json`), normalized);
+    assert.deepEqual(await compact(`/data/season-${season}.json`), normalized);
   }
 });
 

@@ -59,7 +59,7 @@ async function harness() {
 test('offline install caches shell without downloading unused seasons, and removes obsolete caches', async () => {
   const h = await harness();
   await h.caches.open('tohto-savant-offline-v4-data');
-  const retained = await h.caches.open('tohto-savant-offline-v5-data');
+  const retained = await h.caches.open('tohto-public-snapshots-v1');
   await retained.put('/data/compact/season-2026-fall.json', Response.json({ pitches: [42] }));
   await h.dispatch('install');
   assert.ok(h.fetched.some(url => url.endsWith('/assets/app.js')));
@@ -67,7 +67,7 @@ test('offline install caches shell without downloading unused seasons, and remov
   await h.dispatch('activate');
   assert.equal(h.claimed(), true);
   assert.ok(!h.stores.has('tohto-savant-offline-v4-data'));
-  assert.ok(h.stores.has('tohto-savant-offline-v8-app'));
+  assert.ok(h.stores.has('tohto-savant-offline-v9-app'));
   assert.deepEqual(await (await h.caches.match('/data/compact/season-2026-fall.json'))!.json(), { pitches: [42] });
 });
 
@@ -81,24 +81,20 @@ test('offline worker excludes authenticated routes, API, CSV and other origins',
   assert.equal(h.fetched.length, 0);
 });
 
-test('used data refresh stays alive and a later network failure returns its cached JSON', async () => {
+test('standalone JSON never bypasses paired snapshot validation', async () => {
   const h = await harness();
-  const request = new Request('https://test.invalid/data/compact/season-2026-spring.json');
-  const first = await h.dispatch('fetch', { request });
-  assert.equal(first.backgroundTasks, 1);
-  assert.deepEqual(await first.result!.json(), { pitches: [1] });
-  h.setOffline();
-  const second = await h.dispatch('fetch', { request });
-  assert.deepEqual(await second.result!.json(), { pitches: [1] });
-  const absent = await h.dispatch('fetch', { request: new Request('https://test.invalid/data/compact/season-2025-fall.json') });
-  assert.equal(absent.result!.status, 503);
+  for (const path of ['/data/compact/season-2026-spring.json', '/data/spin-2035-fall.json', '/data/news_feed.json']) {
+    const response = await h.dispatch('fetch', { request: new Request(`https://test.invalid${path}`) });
+    assert.equal(response.result, undefined);
+    assert.equal(response.backgroundTasks, 0);
+  }
+  assert.equal(h.fetched.length, 0);
 });
 
-
-test('storage denied still returns successful page, asset and data responses', async () => {
+test('storage denied still returns successful page and asset responses', async () => {
   const h = await harness();
   h.exhaustStorage();
-  for (const path of ['/', '/assets/new.js', '/data/compact/season-2035-spring.json']) {
+  for (const path of ['/', '/assets/new.js']) {
     const request = new Request(`https://test.invalid${path}`);
     if (path === '/') Object.defineProperty(request, 'mode', { value: 'navigate' });
     const { result } = await h.dispatch('fetch', { request });
@@ -106,14 +102,13 @@ test('storage denied still returns successful page, asset and data responses', a
   }
 });
 
-test('data cache stays bounded and retains the file refreshed at its limit', async () => {
+test('activation retires unpaired data caches and retains verified snapshot storage', async () => {
   const h = await harness();
-  for (let year = 2020; year < 2033; year++) {
-    await h.dispatch('fetch', { request: new Request(`https://test.invalid/data/compact/season-${year}-spring.json`) });
-  }
-  const cache = await h.caches.open('tohto-savant-offline-v5-data');
-  assert.equal((await cache.keys()).length, 12);
-  assert.equal(await h.caches.match('/data/compact/season-2020-spring.json'), undefined);
-  await h.dispatch('fetch', { request: new Request('https://test.invalid/data/compact/season-2021-spring.json') });
-  assert.ok(await h.caches.match('/data/compact/season-2021-spring.json'));
+  const old = await h.caches.open('tohto-savant-offline-v5-data');
+  await old.put('/data/season-2035-spring.json', Response.json({ old: true }));
+  const current = await h.caches.open('tohto-public-snapshots-v1');
+  await current.put('/__tohto_public_cache__/snapshot/2035-spring', Response.json({ pair: true }));
+  await h.dispatch('activate');
+  assert.equal(h.stores.has('tohto-savant-offline-v5-data'), false);
+  assert.deepEqual(await (await h.caches.match('/__tohto_public_cache__/snapshot/2035-spring'))!.json(), { pair: true });
 });

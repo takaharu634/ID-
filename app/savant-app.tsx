@@ -13,7 +13,8 @@ import { type Row, type Dataset, type SeasonKey } from "../lib/dataset-types";
 import { seasonInfo, seasonFromLabel } from "../lib/seasons.mjs";
 import { useSeasonCatalog, refreshSeasonCatalog } from "../lib/season-catalog";
 import { enrichDevelopmentDataset } from '../lib/development-enrichment';
-import { loadStaticDataset, loadBundledDataset, createLatestRequest, readPreference, savePreference } from "../lib/dataset-loader";
+import { loadStaticDataset, loadBundledDataset, createLatestRequest, readPreference, savePreference, resetDatasetCache } from "../lib/dataset-loader";
+import { usePublicDataNotice, hasSavedPublicDataNotice } from '../lib/public-data-notice';
 import { METRIC_INFO, METRIC_KEY_BY_LABEL, getMetricInfo, type MetricInfo } from "../lib/metric-definitions";
 import { printReport } from "./print-report";
 import LeagueComparison from "./league-comparison";
@@ -355,6 +356,7 @@ export default function SavantApp() {
   const catalog = useSeasonCatalog();
   const [data, setData] = useState<Dataset | null>(null);
   const [season, setSeason] = useState<SeasonKey>("2026-fall");
+  const publicDataNotice = usePublicDataNotice(season);
   const [route, setRoute] = useState<RouteState>({ view: "home" });
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -368,6 +370,12 @@ export default function SavantApp() {
   const currentDisplay = useRef({data,season});
   currentDisplay.current={data,season};
   const observedRevision = useRef('');
+
+  async function retryDataset() {
+    const fresh = await refreshSeasonCatalog().catch(() => catalogRef.current);
+    resetDatasetCache();
+    await loadDataset(requestedSeason.current, fresh.revision);
+  }
 
   async function loadDataset(targetSeason: SeasonKey = season, revision = catalogRef.current.revision) {
     const isCurrent = latestLoad.current.start();
@@ -416,7 +424,16 @@ export default function SavantApp() {
     const pop = () => { setRoute(readRoute()); const target = new URLSearchParams(window.location.search).get("シーズン") as SeasonKey; if (catalogRef.current.seasons[target] && target !== requestedSeason.current) loadDataset(target); };
     const check = async () => {
       if (document.visibilityState === 'hidden') return;
-      try { const fresh=await refreshSeasonCatalog(); if(observedRevision.current!==fresh.revision) await loadDataset(requestedSeason.current, fresh.revision); } catch { /* Retry on the next focus or online event. */ }
+      const hadSavedData = hasSavedPublicDataNotice(requestedSeason.current);
+      try {
+        const fresh = await refreshSeasonCatalog();
+        if (hadSavedData || observedRevision.current !== fresh.revision) {
+          // A successful catalog request can clear its notice before this check.
+          // Force a network retry even if the catalog revision has not changed.
+          if (hadSavedData) resetDatasetCache();
+          await loadDataset(requestedSeason.current, fresh.revision);
+        }
+      } catch { /* Retry on the next focus or online event. */ }
     };
     window.addEventListener("popstate", pop);
     window.addEventListener('focus',check); window.addEventListener('online',check); document.addEventListener('visibilitychange',check);
@@ -463,7 +480,7 @@ export default function SavantApp() {
         <BrandMark />
         <div className="loader" />
         <p>{loadError || "TrackManデータを読み込んでいます"}</p>
-        {loadError && <button className="primary-button" onClick={() => loadDataset(requestedSeason.current)}>再読み込み</button>}
+        {loadError && <button className="primary-button" onClick={() => void retryDataset()}>再読み込み</button>}
       </main>
     );
   }
@@ -494,7 +511,7 @@ export default function SavantApp() {
         season={loadingSeason ?? season}
         onSeason={(value) => { navigate(route, value); loadDataset(value); }}
       />
-      {(loadingSeason || loadError) && <div className="dataset-status" role="status" aria-live="polite">{loadingSeason ? `${seasonInfo(loadingSeason).label}を読み込んでいます。現在の表示は${seasonInfo(season).label}です。` : <>{loadError}<button type="button" onClick={() => loadDataset(requestedSeason.current)}>再読み込み</button></>}</div>}
+      {(loadingSeason || loadError || publicDataNotice) && <div className="dataset-status" role="status" aria-live="polite">{loadingSeason ? `${seasonInfo(loadingSeason).label}を読み込んでいます。現在の表示は${seasonInfo(season).label}です。` : <>{loadError || publicDataNotice?.message}<button type="button" onClick={() => void retryDataset()}>再読み込み</button></>}</div>}
       <TeamStrip teams={data.teams} season={season} onTeam={() => navigate({ view: "stats" })} />
       {menuOpen && <MenuOverlay close={() => setMenuOpen(false)} navigate={navigate} data={data} />}
 
@@ -557,7 +574,7 @@ function Header({ searchText, setSearchText, suggestions, onPlayer, navigate, on
             </div>
           )}
         </div>
-        <button className="sound-button" onClick={() => onMuted(!muted)} aria-label={muted ? "効果音をオンにする" : "効果音をオフにする"}>{muted ? "🔇" : "🔊"}</button>
+        <button className="sound-button" aria-pressed={!muted} onClick={() => onMuted(!muted)} aria-label={muted ? "効果音をオンにする" : "効果音をオフにする"}>{muted ? "🔇" : "🔊"}</button>
         <button className="menu-button" onClick={onMenu} aria-label="メニューを開く"><span /><span /><span /></button>
       </div>
       <nav className="desktop-nav" aria-label="主要メニュー">
@@ -1949,8 +1966,8 @@ function PlayerView({ season, data, player, navigate, news }: { season: SeasonKe
         <div><p>{player.team}</p><h1>{player.kanji || player.name}</h1><h2>{player.romanName ?? player.name}</h2><span>{roleLabel(player)}</span></div>
         {role === "投手" && <button className="secondary-button" onClick={() => navigate({ view: "compare", playerId: player.id })}>選手比較に進む</button>}
       </section>
-      {roles.length > 1 && <div className="role-tabs">{roles.map((value: string) => <button key={value} className={role === value ? "active" : ""} onClick={() => { setRole(value); setTab("概要"); }}>{value}</button>)}</div>}
-      <div className="player-tabs" role="tablist">{tabs.map((value) => <button key={value} className={tab === value ? "active" : ""} onClick={() => setTab(value)}>{value}</button>)}</div>
+      {roles.length > 1 && <div className="role-tabs" role="group" aria-label="選手種別">{roles.map((value: string) => <button key={value} className={role === value ? "active" : ""} aria-pressed={role === value} onClick={() => { setRole(value); setTab("概要"); }}>{value}</button>)}</div>}
+      <div className="player-tabs" role="group" aria-label="選手の分析">{tabs.map((value) => <button key={value} className={tab === value ? "active" : ""} aria-pressed={tab === value} onClick={() => setTab(value)}>{value}</button>)}</div>
       {role !== "捕手" && tab !== "PITCHスコア" && tab !== "NEWS" && <PlayerFilters filters={filters} setFilters={setFilters} data={data} role={role} />}
       {role === "投手" && tab === "PITCHスコア" && <div className="analysis-scope"><span>集計範囲</span><strong>{seasonInfo(season).label}・シーズン全体</strong></div>}
       {role === "投手" && filteredPitcher && <PitcherTab tab={tab} season={season} player={tab === "PITCHスコア" ? player.pitching : filteredPitcher} pitches={pitcherPitches} allPitches={allRolePitches} arsenal={arsenal} benchmarks={benchmarks.pitching} filtersActive={filtersActive} spinPitchType={spinPitchType} onOpenSpin={(pitchType) => { setSpinPitchType(pitchType); setTab("回転"); }} />}

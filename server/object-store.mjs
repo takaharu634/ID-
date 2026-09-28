@@ -21,7 +21,7 @@ export function* splitText(text) {
 /** Stable game boundaries share unchanged pitch blocks between releases. */
 export function* objectSegments(text, kind) {
   if(kind==='summary') {
-    const data=JSON.parse(text);
+    const data=typeof text==='string'?JSON.parse(text):text;
     if(!Array.isArray(data.pitches)) throw new Error('投球データがありません。');
     const {pitches,...summary}=data;
     yield* splitText(JSON.stringify(summary).slice(0,-1)+',"pitches":[');
@@ -45,9 +45,20 @@ export async function putVerified(bucket,key,text) {
   return {key,sha256:hash,bytes:encoder.encode(text).length};
 }
 export async function writeObject(bucket,key,text,kind,season) {
-  if(text.length<BLOCK_CHARS*2) return putVerified(bucket,key,text);
+  let segments;
+  if(typeof text==='string') {
+    if(text.length<BLOCK_CHARS*2) return putVerified(bucket,key,text);
+    segments=objectSegments(text,kind);
+  } else {
+    if(kind!=='summary' || !text || typeof text!=='object') throw new Error('保存内容が不正です。');
+    // Inspect a bounded prefix to keep the existing small-object representation.
+    const remaining=objectSegments(text,kind), prefix=[];let chars=0, done=false;
+    while(chars<BLOCK_CHARS*2) { const next=remaining.next();if(next.done){done=true;break;}prefix.push(next.value);chars+=next.value.length; }
+    if(done) return putVerified(bucket,key,JSON.stringify(text));
+    segments=(function*(){yield* prefix;yield* remaining;})();
+  }
   const parts=[];let bytes=0;
-  for(const segment of objectSegments(text,kind)) {
+  for(const segment of segments) {
     const rawHash=await sha256(segment), compressed=await compressText(segment), hash=await sha256(compressed);
     const block=await putVerified(bucket,`datasets/v3/${season}/blocks/${hash}.gz.b64`,compressed);
     // A read-back must also decompress to the exact original bytes before staging.
@@ -72,28 +83,37 @@ export async function readManifest(bucket,ref) {
   if(bytes!==m.bytes) throw new Error('分割データの容量が一致しません。');
   return m;
 }
+/** Checks stored compressed bytes AND the exact bytes that readers will receive. */
 export async function verifyObject(bucket,ref) {
   if(!ref || !digest(ref.sha256)) throw new Error('保存版の照合値が不正です。');
   if(ref.format==='tohto-chunks-v1') {
     const m=await readManifest(bucket,ref);
-    for(const p of m.parts) {
-      const obj=bucket.head?await bucket.head(p.key):await bucket.get(p.key);
-      if(!obj) throw new Error('分割データが欠けています。');
-      const checksum=obj.checksums?.sha256;
-      const actual=checksum?[...new Uint8Array(checksum)].map(x=>x.toString(16).padStart(2,'0')).join(''):await sha256(await (await bucket.get(p.key)).text());
-      if(actual!==p.sha256) throw new Error('分割データが破損しています。');
-    }
+    for(const part of m.parts) await verifyObject(bucket,part);
     return;
   }
-  const obj=bucket.head?await bucket.head(ref.key):await bucket.get(ref.key);if(!obj) throw new Error('保存版が欠けています。');
+  const raw = ref.rawSha256 !== undefined || ref.rawBytes !== undefined;
+  if(raw && (!digest(ref.rawSha256) || !Number.isSafeInteger(ref.rawBytes) || ref.rawBytes<0 || ref.rawBytes>BLOCK_CHARS*4+16)) throw new Error('分割データの参照が不正です。');
+  // Compressed blocks must be downloaded even when R2 provides their checksum.
+  const obj=raw || !bucket.head ? await bucket.get(ref.key) : await bucket.head(ref.key);
+  if(!obj) throw new Error('保存版が欠けています。');
   const checksum=obj.checksums?.sha256;
-  const actual=checksum?[...new Uint8Array(checksum)].map(x=>x.toString(16).padStart(2,'0')).join(''):await sha256(await (obj.text?obj:await bucket.get(ref.key)).text());
+  let saved;
+  if(raw || !checksum) {
+    const body=obj.text?obj:await bucket.get(ref.key);
+    if(!body) throw new Error('保存版が欠けています。');
+    saved=await body.text(); // R2 response bodies are single-use.
+  }
+  const actual=saved!==undefined?await sha256(saved):[...new Uint8Array(checksum)].map(x=>x.toString(16).padStart(2,'0')).join('');
   if(actual!==ref.sha256) throw new Error('保存版が破損しています。');
+  if(raw) {
+    const bytes=encoder.encode(await decompressText(saved));
+    if(bytes.length!==ref.rawBytes || await sha256(bytes)!==ref.rawSha256) throw new Error('保存版の復元に失敗しました。');
+  }
 }
 export async function objectReferences(bucket,ref) {
   if(ref.format!=='tohto-chunks-v1') return [ref];
   const m=await readManifest(bucket,ref);
-  return [{key:ref.key,sha256:ref.sha256},...m.parts.map(p=>({key:p.key,sha256:p.sha256}))];
+  return [{key:ref.key,sha256:ref.sha256},...m.parts.map(p=>({key:p.key,sha256:p.sha256,rawSha256:p.rawSha256,rawBytes:p.rawBytes}))];
 }
 export async function openObject(bucket,ref) {
   if(!ref) throw new Error('保存版の参照がありません。');

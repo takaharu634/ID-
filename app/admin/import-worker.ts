@@ -33,9 +33,29 @@ async function baseline(season: string) {
   if(!csv) return {raw:'',summary:'',spin:'[]'};
   return {raw:csv,summary:await get('json'),spin:await get('spin')};
 }
-self.onmessage = async (event: MessageEvent<File[]>) => {
+type WorkerRequest = { type:'inspect'; files:File[] } | { type:'prepare'; jobId:string; files:{index:number;name:string;sha256:string}[] };
+self.onmessage = async (event: MessageEvent<File[] | WorkerRequest>) => {
   try {
-    const files=Array.isArray(event.data)?event.data:[event.data];
+    const request=event.data;
+    if(!Array.isArray(request) && request.type==='inspect') {
+      const files=[];
+      for(const file of request.files) {
+        if(!file.name.toLowerCase().endsWith('.csv')) throw new Error('TrackMan CSVを選択してください。');
+        const bytes=await file.arrayBuffer(),season=detectSeason(csvRows(decodeUtf8(bytes)).rows).season;
+        const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(value=>value.toString(16).padStart(2,'0')).join('');
+        files.push({name:file.name,size:file.size,season,sha256});
+      }
+      self.postMessage({files});return;
+    }
+    const files:File[]=Array.isArray(request)?request:[];
+    if(!Array.isArray(request)) for(const file of request.files) {
+      const response=await fetch(`/api/import-jobs?id=${encodeURIComponent(request.jobId)}&file=${file.index}`,{cache:'no-store'});
+      if(!response.ok)throw new Error('保存済み原本を取得できません。通信とサインイン状態を確認してください。');
+      const bytes=await response.arrayBuffer();
+      const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(value=>value.toString(16).padStart(2,'0')).join('');
+      if(hash!==file.sha256)throw new Error('保存済み原本の全体照合値が一致しません。取り込みを中止して原本から追加してください。');
+      files.push(new File([bytes],file.name,{type:'text/csv'}));
+    }
     const groups=new Map<string,{file:File,text:string}[]>();
     for(const file of files) {
       if(!file.name.toLowerCase().endsWith('.csv')) throw new Error('TrackMan CSVを選択してください。');
