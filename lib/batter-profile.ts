@@ -1,3 +1,4 @@
+import { measuredNumber } from "./numeric-summary.ts";
 import {
   DEFAULT_ZONE,
   SCOUTING_DEFINITIONS,
@@ -231,8 +232,8 @@ function hitShape(pitch: ScoutingPitch) {
   if (raw.includes("line")) return "ライナー";
   if (raw.includes("popup") || raw.includes("popfly")) return "ポップフライ";
   if (raw.includes("fly")) return "フライ";
-  const launchAngle = Number(pitch.launchAngle);
-  if (Number.isFinite(launchAngle)) {
+  const launchAngle = measuredNumber(pitch.launchAngle);
+  if (launchAngle !== null) {
     if (launchAngle < 5) return "ゴロ";
     if (launchAngle < 18) return "ライナー";
     if (launchAngle >= 50) return "ポップフライ";
@@ -242,24 +243,25 @@ function hitShape(pitch: ScoutingPitch) {
 }
 
 export function sprayDirection(pitch: ScoutingPitch, batterSide: string) {
-  const direction = Number(pitch.sprayAngle ?? pitch.direction);
-  if (!Number.isFinite(direction) || Math.abs(direction) > 45) return null;
+  const direction = measuredNumber(pitch.sprayAngle) ?? measuredNumber(pitch.direction);
+  if (direction === null || Math.abs(direction) > 45) return null;
   if (Math.abs(direction) <= 15) return "センター";
   const pull = batterSide === "左" ? direction > 15 : direction < -15;
   return pull ? "引っ張り" : "逆方向";
 }
 
 export function movementDirection(pitch: ScoutingPitch) {
-  const hb = Number(pitch.hb);
-  if (!Number.isFinite(hb)) return null;
+  const hb = measuredNumber(pitch.hb);
+  if (hb === null) return null;
   const toward = hb * (pitch.batterSide === "左" ? -1 : 1);
   if (Math.abs(toward) < 10) return "ほぼ真っすぐ";
   return toward > 0 ? "打者へ入る" : "打者から逃げる";
 }
 
 export function movementMagnitude(pitch: ScoutingPitch) {
-  const value = Math.abs(Number(pitch.hb));
-  if (!Number.isFinite(value)) return null;
+  const hb = measuredNumber(pitch.hb);
+  if (hb === null) return null;
+  const value = Math.abs(hb);
   if (value < 10) return "10cm未満";
   if (value < 20) return "10～20cm";
   if (value < 30) return "20～30cm";
@@ -311,7 +313,11 @@ function spraySplit(rows: ScoutingPitch[], pitcherThrows: string, thresholds: St
     popupRate: share(shapes, "ポップフライ"),
     avgExitVelocity: metrics.avgExitVelocity.value,
     hardHitRate: metrics.hardHit.value,
-    points: batted.filter((pitch) => typeof pitch.distance === "number" && Number.isFinite(pitch.distance) && pitch.distance >= 0).map((pitch) => ({ direction: Number(pitch.sprayAngle ?? pitch.direction), distance: Number(pitch.distance), exitVelocity: Number(pitch.exitVelocity), shape: hitShape(pitch) })).filter((point) => Number.isFinite(point.direction) && Math.abs(point.direction) <= 45),
+    points: batted.flatMap((pitch) => {
+      const direction = measuredNumber(pitch.sprayAngle) ?? measuredNumber(pitch.direction);
+      if (direction === null || Math.abs(direction) > 45 || typeof pitch.distance !== "number" || !Number.isFinite(pitch.distance) || pitch.distance < 0) return [];
+      return [{ direction, distance: pitch.distance, exitVelocity: Number(pitch.exitVelocity), shape: hitShape(pitch) }];
+    }),
   };
 }
 
@@ -339,8 +345,8 @@ function buildTags(metrics: ProfileMetrics, pitches: ScoutingPitch[], spray: Ret
 }
 
 function velocityBand(pitch: ScoutingPitch) {
-  const velocity = Number(pitch.velocity);
-  if (!Number.isFinite(velocity)) return null;
+  const velocity = measuredNumber(pitch.velocity);
+  if (velocity === null) return null;
   if (velocity < 135) return "135km/h未満";
   if (velocity < 140) return "135～139km/h";
   if (velocity < 145) return "140～144km/h";
@@ -349,10 +355,10 @@ function velocityBand(pitch: ScoutingPitch) {
 }
 
 function verticalClass(pitch: ScoutingPitch, quartiles: Map<string, { q25: number; q75: number }>) {
-  const ivb = Number(pitch.ivb);
+  const ivb = measuredNumber(pitch.ivb);
   const key = `${seasonKey(pitch)}|${pitchGroup(pitch.pitchType)}`;
   const bounds = quartiles.get(key);
-  if (!Number.isFinite(ivb) || !bounds) return null;
+  if (ivb === null || !bounds) return null;
   if (ivb >= bounds.q75) return "上位25%";
   if (ivb <= bounds.q25) return "下位25%";
   return "中央50%";
@@ -366,8 +372,8 @@ function verticalLabel(group: string, classification: string) {
 function buildQuartiles(pitches: ScoutingPitch[]) {
   const values = new Map<string, number[]>();
   pitches.forEach((pitch) => {
-    const ivb = Number(pitch.ivb);
-    if (!Number.isFinite(ivb)) return;
+    const ivb = measuredNumber(pitch.ivb);
+    if (ivb === null) return;
     const key = `${seasonKey(pitch)}|${pitchGroup(pitch.pitchType)}`;
     const rows = values.get(key) ?? [];
     rows.push(ivb);
@@ -399,18 +405,19 @@ export function filterBatterProfilePitches(pitches: ScoutingPitch[], filters: De
   const quartiles = buildQuartiles(leaguePitches);
   return pitches.filter((pitch) => {
     const cell = zoneCell(pitch, String(pitch.batterSide));
-    const velocity = Number(pitch.velocity);
+    const velocity = measuredNumber(pitch.velocity);
+    const hb = measuredNumber(pitch.hb);
     return (!filters.pitcherThrows || pitch.pitcherThrows === filters.pitcherThrows)
       && (!filters.batterSide || pitch.batterSide === filters.batterSide)
       && (!filters.pitchGroup || (filters.pitchGroup === "変化球系"
         ? ["横変化系", "縦変化系", "落ち球系", "チェンジ系"].includes(pitchGroup(pitch.pitchType))
         : pitchGroup(pitch.pitchType) === filters.pitchGroup))
       && (!filters.pitchType || pitch.pitchType === filters.pitchType)
-      && (filters.velocityMin === null || filters.velocityMin === undefined || Number.isFinite(velocity) && velocity >= filters.velocityMin)
-      && (filters.velocityMax === null || filters.velocityMax === undefined || Number.isFinite(velocity) && velocity <= filters.velocityMax)
+      && (filters.velocityMin === null || filters.velocityMin === undefined || velocity !== null && velocity >= filters.velocityMin)
+      && (filters.velocityMax === null || filters.velocityMax === undefined || velocity !== null && velocity <= filters.velocityMax)
       && (!filters.movementDirection || movementDirection(pitch) === filters.movementDirection)
       && (!filters.movementBand || movementMagnitude(pitch) === filters.movementBand)
-      && (filters.movementMin === null || filters.movementMin === undefined || Number.isFinite(Number(pitch.hb)) && Math.abs(Number(pitch.hb)) >= filters.movementMin)
+      && (filters.movementMin === null || filters.movementMin === undefined || hb !== null && Math.abs(hb) >= filters.movementMin)
       && (!filters.verticalClass || verticalClass(pitch, quartiles) === filters.verticalClass)
       && (!filters.horizontal || cell?.horizontal === filters.horizontal)
       && (!filters.vertical || cell?.vertical === filters.vertical)

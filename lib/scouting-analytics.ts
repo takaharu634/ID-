@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { measuredNumber, meanOf } from "./numeric-summary.ts";
+
 export type ScoutingPitch = Record<string, any>;
 
 export type ZoneBounds = {
@@ -64,8 +66,7 @@ export function isStrikeEquivalent(pitch: ScoutingPitch) {
 }
 
 export function hasLocation(pitch: ScoutingPitch) {
-  if (pitch.plateX === null || pitch.plateX === undefined || pitch.plateX === "" || pitch.plateZ === null || pitch.plateZ === undefined || pitch.plateZ === "") return false;
-  return Number.isFinite(Number(pitch.plateX)) && Number.isFinite(Number(pitch.plateZ));
+  return measuredNumber(pitch.plateX) !== null && measuredNumber(pitch.plateZ) !== null;
 }
 
 export function isInZone(pitch: ScoutingPitch, zone: ZoneBounds = DEFAULT_ZONE) {
@@ -94,7 +95,7 @@ export function annotatePlateAppearances(pitches: ScoutingPitch[]): ScoutingPitc
 
   return pitches.map((pitch, index) => {
     const context = [pitch.gameId, pitch.inning, pitch.half, pitch.batterId].join("|");
-    const countReset = Number(pitch.balls) === 0 && Number(pitch.strikes) === 0;
+    const countReset = measuredNumber(pitch.balls) === 0 && measuredNumber(pitch.strikes) === 0;
     const newAppearance = context !== currentContext || (countReset && Boolean(previous && endsPlateAppearance(previous)));
     if (newAppearance) {
       sequence += 1;
@@ -160,7 +161,7 @@ export function calculateApproachMetrics(
 ): ApproachMetrics {
   const firstPitchSwing = rateMetric(pitches, (pitch) => Boolean(pitch._isPaFirstPitch), isSwing, SCOUTING_DEFINITIONS.firstPitchSwingRate, minimumSample);
   const firstStrikeSwing = rateMetric(pitches, (pitch) => Boolean(pitch._isPaFirstStrike), isSwing, SCOUTING_DEFINITIONS.firstStrikeSwingRate, minimumSample);
-  const preTwoStrikeChase = rateMetric(pitches, (pitch) => Number(pitch.strikes) < 2 && hasLocation(pitch) && !isInZone(pitch, zone), isSwing, SCOUTING_DEFINITIONS.preTwoStrikeChaseRate, minimumSample);
+  const preTwoStrikeChase = rateMetric(pitches, (pitch) => (measuredNumber(pitch.strikes) === 0 || measuredNumber(pitch.strikes) === 1) && hasLocation(pitch) && !isInZone(pitch, zone), isSwing, SCOUTING_DEFINITIONS.preTwoStrikeChaseRate, minimumSample);
   const twoStrikeChase = rateMetric(pitches, (pitch) => Number(pitch.strikes) === 2 && hasLocation(pitch) && !isInZone(pitch, zone), isSwing, SCOUTING_DEFINITIONS.twoStrikeChaseRate, minimumSample);
   const expansionValue = preTwoStrikeChase.value === null || twoStrikeChase.value === null ? null : twoStrikeChase.value - preTwoStrikeChase.value;
   const twoStrikeExpansion: RateMetric = {
@@ -221,7 +222,7 @@ function heatmapCells(pitches: ScoutingPitch[], strikes: "before" | "two", minim
   const zoneHeight = zone.top - zone.bottom;
   const xBounds = [-Infinity, zone.left, zone.left + zoneWidth / 3, zone.left + zoneWidth * 2 / 3, zone.right, Infinity];
   const zBounds = [Infinity, zone.top, zone.top - zoneHeight / 3, zone.top - zoneHeight * 2 / 3, zone.bottom, -Infinity];
-  const eligible = pitches.filter((pitch) => hasLocation(pitch) && (strikes === "two" ? Number(pitch.strikes) === 2 : Number(pitch.strikes) < 2));
+  const eligible = pitches.filter((pitch) => hasLocation(pitch) && (strikes === "two" ? Number(pitch.strikes) === 2 : (measuredNumber(pitch.strikes) === 0 || measuredNumber(pitch.strikes) === 1)));
   const cells: HeatCell[] = [];
   for (let row = 0; row < size; row += 1) {
     for (let column = 0; column < size; column += 1) {
@@ -279,8 +280,7 @@ export type PitchGroupSummary = {
 };
 
 function average(pitches: ScoutingPitch[], key: string) {
-  const values = pitches.map((pitch) => Number(pitch[key])).filter(Number.isFinite);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  return meanOf(pitches, key);
 }
 
 export function summarizePitchGroup(pitches: ScoutingPitch[], minimumSample = DEFAULT_MINIMUM_SAMPLE, zone: ZoneBounds = DEFAULT_ZONE): PitchGroupSummary {

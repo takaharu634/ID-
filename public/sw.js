@@ -1,7 +1,7 @@
-const CACHE_VERSION = 'tohto-savant-offline-v8';
+const CACHE_VERSION = 'tohto-savant-offline-v9';
 const APP_CACHE = `${CACHE_VERSION}-app`;
-// Keep existing offline datasets when refreshing the app name.
-const DATA_CACHE = 'tohto-savant-offline-v5-data';
+// The application validates and atomically saves summary + spin as one record.
+const DATA_CACHE = 'tohto-public-snapshots-v1';
 const CORE_FILES = ['/', '/manifest.webmanifest', '/favicon.svg'];
 const ASSET = /\.(?:js|css|svg|png|jpg|jpeg|webp|woff2?)$/i;
 const PRIVATE_PATH = /^\/(?:admin|api|signin-with-chatgpt|signout-with-chatgpt|callback)(?:\/|$)/;
@@ -57,7 +57,7 @@ self.addEventListener('message', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(DATA_CACHE);
     const keys = await cache.keys();
-    const seasons = [...new Set(keys.map(key=>/\/season-([1-9]\d{3}-(?:spring|fall))\.json$/.exec(new URL(key.url).pathname)?.[1]).filter(Boolean))];
+    const seasons = [...new Set(keys.map(key=>/^\/__tohto_public_cache__\/snapshot\/([1-9]\d{3}-(?:spring|fall))$/.exec(new URL(key.url).pathname)?.[1]).filter(Boolean))];
     event.source?.postMessage({ type: 'OFFLINE_STATUS', version: CACHE_VERSION, seasons });
   })());
 });
@@ -80,30 +80,9 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (url.pathname.startsWith('/data/') && url.pathname.endsWith('.json')) {
-    const refresh = fetch(request).then(async response => {
-      if (response.ok && response.headers.get('content-type')?.includes('json')) {
-        try {
-          const cache=await caches.open(DATA_CACHE);
-          await cache.put(request,response.clone());
-          const keys=await cache.keys();
-          // Keep twelve files, retaining the data just fetched.
-          for(const key of keys.filter(key=>key.url!==request.url).slice(0,Math.max(0,keys.length-12)))await cache.delete(key);
-        } catch { /* Device quota must never hide a valid network response. */ }
-      }
-      return response;
-    }).catch(() => null);
-    event.waitUntil(refresh.then(() => undefined));
-    event.respondWith((async () => {
-      const cached = await cachedResponse(request);
-      let timeout;
-      // Prefer fresh data; an existing offline copy keeps poor connections usable.
-      const response = cached ? await Promise.race([refresh, new Promise(resolve => { timeout = setTimeout(() => resolve(null), 3000); })]) : await refresh;
-      clearTimeout(timeout);
-      return (response?.ok ? response : cached || response) || new Response('Offline data unavailable', { status: 503 });
-    })());
-    return;
-  }
+  // Never return individually cached JSON: it can mix two active publications.
+  // A network failure is handled by the application's verified paired snapshot.
+  if (url.pathname.startsWith('/data/')) return;
 
   if (ASSET.test(url.pathname)) {
     event.respondWith((async () => {

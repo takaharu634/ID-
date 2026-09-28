@@ -1,4 +1,5 @@
 import { applyPitchQuality } from '../../../lib/pitch-quality.mjs';
+import { repairLegacyAggregates } from '../../../lib/repair-legacy-aggregates.ts';
 export type PublicDataset = {
   metadata?: Record<string, unknown>;
   league?: Record<string, unknown>;
@@ -31,13 +32,13 @@ export async function loadPublicDataset(request: Request): Promise<PublicDataset
   const bucket = runtime.BUCKET;
   if (bucket) {
     const current = await activeObject(bucket,season);
-    if (current) return applyPitchQuality(await current.json()) as PublicDataset;
+    if (current) return applyPitchQuality(repairLegacyAggregates(await current.json())) as PublicDataset;
     const legacy = await bucket.get("datasets/current.json");
-    if (legacy) { const value = await legacy.json() as PublicDataset; if (value.metadata?.season === seasonLabel(season)) return applyPitchQuality(value); }
+    if (legacy) { const value = await legacy.json() as PublicDataset; if (value.metadata?.season === seasonLabel(season)) return applyPitchQuality(repairLegacyAggregates(value)); }
   }
   const response = await fetch(new URL(`/data/season-${season}.json`, request.url), { cache: "no-store" });
   if (!response.ok) throw new Error("公開データを読み込めませんでした。");
-  return applyPitchQuality(await response.json()) as PublicDataset;
+  return applyPitchQuality(repairLegacyAggregates(await response.json())) as PublicDataset;
 }
 
 export function normalize(value: unknown) {
