@@ -64,6 +64,22 @@ test('published autumn input has unique pitches and matches the verified source 
   assert.ok(dataset.pitches.every(p => p.year === 2026 && p.season === '秋'));
 });
 
+test('folder sync preserves the agreed Nita and Fujimoto pitch classifications', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'tohto-autumn-player-rules-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, 'incoming.csv');
+  const columns = 'Date,PitchUID,GameUID,PitchNo,Pitcher,Batter,PitchCall,RelSpeed,PitcherTeam,BatterTeam,HomeTeam,AwayTeam,Inning,Top/Bottom,Outs,Balls,Strikes,TaggedPitchType';
+  const text = `${columns}\n` + [
+    '2026-09-18,nita-low,game-1,1,"Nita, Haruto",Batter,StrikeCalled,144.99,RIS_UNI,KOK_UNI,RIS_UNI,KOK_UNI,1,Top,0,0,0,Fastball',
+    '2026-09-18,nita-high,game-1,2,"Nita, Haruto",Batter,StrikeCalled,145,RIS_UNI,KOK_UNI,RIS_UNI,KOK_UNI,1,Top,0,0,1,Fastball',
+    '2026-09-18,fujimoto-ch,game-1,3,"Fujimoto, Shisei",Batter,StrikeCalled,120,KOK_UNI,RIS_UNI,RIS_UNI,KOK_UNI,1,Bottom,0,0,0,Curveball',
+  ].join('\n') + '\n';
+  await writeFile(path, text);
+  await syncAutumn({ folderId: AUTUMN_FOLDER_ID, files: [{ id: 'source-1', name: '20260918-game.csv', modifiedTime: '2026-09-25T12:00:00Z', size: Buffer.byteLength(text), path }] }, { root });
+  const dataset = JSON.parse(await readFile(join(root, 'public/data/season-2026-fall.json'), 'utf8'));
+  assert.deepEqual(dataset.pitches.map(p => p.pitchType), ['シンカー', 'ストレート', 'チェンジアップ']);
+});
+
 
 test('missing batting rows or lost measured contact blocks writes', async t => {
   const root = await mkdtemp(join(tmpdir(), 'tohto-batting-gate-'));

@@ -14,10 +14,10 @@ export function privateCsv(): Plugin {
     async load(source) {
       if (source === '\0private:season-csv') {
         const result: Record<string, string[]> = {};
-        for (const season of ['2025-fall', '2026-spring', '2026-fall']) {
-          const files = season === '2026-fall'
-            ? (await readdir(resolve(root, 'data/trackman/2026-fall'))).filter(f => f.endsWith('.csv')).sort().map(f => resolve(root, 'data/trackman/2026-fall', f))
-            : [resolve(root, `data/raw/season-${season}.csv`)];
+        const seasons=JSON.parse(await readFile(resolve(root,'lib/generated/seasons.json'),'utf8')) as string[];
+        for (const season of seasons) {
+          const gameFiles=await readdir(resolve(root,`data/trackman/${season}`)).catch(()=>[] as string[]);
+          const files=gameFiles.length?gameFiles.filter(f=>f.endsWith('.csv')).sort().map(f=>resolve(root,`data/trackman/${season}`,f)):[resolve(root,`data/raw/season-${season}.csv`)];
           result[season] = [];
           for (const file of files) { this.addWatchFile(file); result[season].push(gzipSync(await readFile(file), { level: 9 }).toString('base64')); }
         }

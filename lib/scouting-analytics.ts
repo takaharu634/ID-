@@ -257,7 +257,7 @@ export function mainLocation(pitches: ScoutingPitch[], zone: ZoneBounds = DEFAUL
   const groups = new Map<string, number>();
   valid.forEach((pitch) => {
     const x = Number(pitch.plateX), z = Number(pitch.plateZ);
-    const horizontal = x < zone.left ? "捕手から見て左外" : x > zone.right ? "捕手から見て右外" : x < -0.085 ? "捕手から見て左" : x > 0.085 ? "捕手から見て右" : "中央";
+    const horizontal = x < zone.left ? "捕手から見て右外" : x > zone.right ? "捕手から見て左外" : x < -0.085 ? "捕手から見て右" : x > 0.085 ? "捕手から見て左" : "中央";
     const vertical = z < zone.bottom ? "低" : z > zone.top ? "高" : z < 0.65 ? "低め" : z > 0.85 ? "高め" : "中段";
     const label = `${horizontal}・${vertical}`;
     groups.set(label, (groups.get(label) ?? 0) + 1);

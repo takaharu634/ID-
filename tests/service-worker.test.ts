@@ -63,7 +63,7 @@ test('offline install caches shell without downloading unused seasons, and remov
   await h.dispatch('activate');
   assert.equal(h.claimed(), true);
   assert.ok(!h.stores.has('tohto-savant-offline-v4-data'));
-  assert.ok(h.stores.has('tohto-savant-offline-v6-app'));
+  assert.ok(h.stores.has('tohto-savant-offline-v7-app'));
   assert.deepEqual(await (await h.caches.match('/data/compact/season-2026-fall.json'))!.json(), { pitches: [42] });
 });
 

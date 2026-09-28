@@ -46,3 +46,8 @@ next-env.d.ts
 
 /public/data/compact/
 /tsconfig.tsbuildinfo
+
+# Exact originals are stored as verified compressed blocks in data/bundled/.
+/public/data/initial-data.json
+/public/data/season-*.json
+/public/data/spin-*.json

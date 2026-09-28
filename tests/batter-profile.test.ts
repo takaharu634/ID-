@@ -57,8 +57,8 @@ test("外角と引っ張り、入る／逃げる方向を打者左右で反転�
 
 test("コースマップは左右打者とも捕手視点の左右順で表示する",()=>{
   const zones=Array.from({length:9},(_,index)=>({index}));
-  assert.deepEqual(catcherViewZoneOrder(zones,"右").map((zone)=>zone.index),[0,1,2,3,4,5,6,7,8]);
-  assert.deepEqual(catcherViewZoneOrder(zones,"左").map((zone)=>zone.index),[2,1,0,5,4,3,8,7,6]);
+  assert.deepEqual(catcherViewZoneOrder(zones,"右").map((zone)=>zone.index),[2,1,0,5,4,3,8,7,6]);
+  assert.deepEqual(catcherViewZoneOrder(zones,"左").map((zone)=>zone.index),[0,1,2,3,4,5,6,7,8]);
 });
 
 test("詳細条件で145km/h以上の直球と外角ゾーン外を抽出する",()=>{

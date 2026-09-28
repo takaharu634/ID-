@@ -35,12 +35,13 @@ function ResultsTable({items,extra,compact=false}:{items:{label:string;stats:Sum
 export default function UmpireAnalysis({data}:{data:Dataset}) {
   const analysis=useMemo(()=>buildUmpireAnalysis(data),[data]);
   const names=[...new Set(analysis.assignments.values())];
-  const [umpire,setUmpire]=useState(names[0]??''),[matchup,setMatchup]=useState(''),[side,setSide]=useState(''),[count,setCount]=useState(''),[pitchType,setPitchType]=useState(''),[perspective,setPerspective]=useState<Perspective>('umpire');
+  const [umpire,setUmpire]=useState(names[0]??''),[matchup,setMatchup]=useState(''),[side,setSide]=useState(''),[count,setCount]=useState(''),[pitchType,setPitchType]=useState('');
+  const perspective: Perspective = 'umpire';
   const known=useMemo(()=>analysis.takes.filter(p=>p.umpire),[analysis]);
   const cards=[...new Set(known.map(card))].sort((a,b)=>a.localeCompare(b,'ja'));
-  const filtered=useMemo(()=>known.filter(p=>(!matchup||card(p)===matchup)&&(!side||p.batterSide===side)&&(!pitchType||p.pitchType===pitchType)&&(!count||(count==='normal'?p.strikes!==2&&p.balls!==3:count==='two'?p.strikes===2:count==='three'?p.balls===3:`${p.balls}-${p.strikes}`===count))&&(perspective!=='batter'||['右','左'].includes(p.batterSide))),[known,matchup,side,pitchType,count,perspective]);
+  const filtered=useMemo(()=>known.filter(p=>(!matchup||card(p)===matchup)&&(!side||p.batterSide===side)&&(!pitchType||p.pitchType===pitchType)&&(!count||(count==='normal'?p.strikes!==2&&p.balls!==3:count==='two'?p.strikes===2:count==='three'?p.balls===3:`${p.balls}-${p.strikes}`===count))),[known,matchup,side,pitchType,count,perspective]);
   const rows=useMemo(()=>filtered.filter(p=>p.umpire===umpire),[filtered,umpire]),s=summarize(rows);
-  const reference=useMemo(()=>analysis.takes.filter(p=>p.umpire!==umpire&&(!side||p.batterSide===side)&&(!pitchType||p.pitchType===pitchType)&&(!count||(count==='normal'?p.strikes!==2&&p.balls!==3:count==='two'?p.strikes===2:count==='three'?p.balls===3:`${p.balls}-${p.strikes}`===count))&&(perspective!=='batter'||['右','左'].includes(p.batterSide))),[analysis,umpire,side,pitchType,count,perspective]);
+  const reference=useMemo(()=>analysis.takes.filter(p=>p.umpire!==umpire&&(!side||p.batterSide===side)&&(!pitchType||p.pitchType===pitchType)&&(!count||(count==='normal'?p.strikes!==2&&p.balls!==3:count==='two'?p.strikes===2:count==='three'?p.balls===3:`${p.balls}-${p.strikes}`===count))),[analysis,umpire,side,pitchType,count,perspective]);
   const widths=useMemo(()=>edgeWidths(rows,reference,perspective),[rows,reference,perspective]);
   const group=(key:(p:Take)=>string)=>[...new Set(rows.map(key))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ja')).map(label=>({label,stats:summarize(rows.filter(p=>key(p)===label))}));
   const catcherIds=[...new Set(rows.map(p=>p.catcherId))].filter(Boolean);
@@ -55,7 +56,7 @@ export default function UmpireAnalysis({data}:{data:Dataset}) {
       <label>打者<select value={side} onChange={e=>setSide(e.target.value)}><option value="">左右すべて</option><option value="右">右打者</option><option value="左">左打者</option></select></label>
       <label>カウント<select value={count} onChange={e=>setCount(e.target.value)}><option value="">すべて</option><option value="normal">通常（2S・3B以外）</option><option value="two">2ストライク</option><option value="three">3ボール</option>{Array.from({length:12},(_,i)=>`${Math.floor(i/3)}-${i%3}`).map(c=><option key={c}>{c}</option>)}</select></label>
       <label>球種<select value={pitchType} onChange={e=>setPitchType(e.target.value)}><option value="">すべて</option>{[...new Set(known.map(p=>p.pitchType))].map(t=><option key={t}>{t}</option>)}</select></label>
-      <label>左右の基準<select value={perspective} onChange={e=>setPerspective(e.target.value as Perspective)}><option value="umpire">球審基準（捕手から見た左右）</option><option value="batter">打者基準（内角・外角）</option></select></label>
+
     </div>
     <div className="ump-kpis">{[['担当試合',String(s.games)],['見逃し投球',String(s.n)],['Called Strike%',pct(s.rate)],['位置・状況をそろえた差',delta(s.delta)],['ゾーン内見逃しS%',`${pct(s.zoneRate)} / ${s.zoneN}球`],['ゾーン外見逃しS%',`${pct(s.outsideRate)} / ${s.outsideN}球`]].map(([label,value])=><div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
     <p className="ump-context">{umpire}：比較可能 {s.compared} / {s.n}球・件数区分 {sampleLabel(s.compared)}。{s.games<2?'1試合以内の結果です。球審固有の傾向とは断定できません。':''}</p>
@@ -66,6 +67,6 @@ export default function UmpireAnalysis({data}:{data:Dataset}) {
     <section className="ump-panel"><h2>試合別</h2><ResultsTable extra items={group(p=>`${p.date} ${card(p)}`)}/></section>
     <section className="ump-panel"><h2>投球への参考</h2><p>{best?`${displayRegion(best.label,perspective)}：期待との差 ${delta(best.stats.delta)}（比較${best.stats.compared}球）。${s.games<2?'この試合での観測値です。次戦でも同じとは限りません。':'対戦前のコース確認に使えます。'}`:'各コースの比較球数が30球未満のため、投球コースの推奨は表示しません。'}</p></section>
     </>}
-    <details className="ump-panel"><summary>集計条件・球審情報</summary><p>対象は「見逃しストライク」と「ボール」。空振り・ファウル・インプレー・死球・ワンバウンド・敬遠は対象外。位置欠測 {analysis.missingLocation}球。球審未登録 {analysis.unknownGames.length}試合。</p><p>期待率は同シーズンの他試合から、打者の左右、2ストライクか、3ボールかをそろえ、近い位置の判定を加重平均（横8.5cm・縦9.5cmのカーネル幅、3倍以内）。対象試合自身は学習に含みません。2試合以上・有効標本5球以上を必要とします。大学カードの絞込みでリーグの比較対象は狭めません。期待差は比較可能な球だけで計算するため、全見逃し球のCalled Strike%との差し算とは一致しない場合があります。</p><p>ゾーン枠は既存画面と同じ固定基準（横±25.4cm・高さ45〜105cm）です。打者個人の規則上の上下限ではありません。広さは50%判定となる境界の距離差であり、ptからcmに換算していません。上下左右の辺中央付近20球以上、ストライク・ボール各5球以上、比較側2試合以上を必要とします。</p><p>件数区分は比較球数で30未満＝参考、30〜79＝低、80〜149＝中、150以上＝高。統計的な精度の保証ではありません。球審・捕手・投手・打者・球種・試合を同時に分離したモデルではありません。</p><p>参考フレーミングは別捕手の比較可能20球以上を使用し、球審差をn/(n+50)で縮小して補正します。追加Sは得点への換算ではありません。</p><p>球審情報：ユーザー提供の2026年秋季リーグ・対戦カード別球審メモ（2026年9月17日）。未登録試合は自動割当しません。</p>{analysis.mismatches.length>0&&<p role="alert">試合情報の不一致：{analysis.mismatches.join('・')}。該当試合は球審別集計から除外しました。</p>}</details>
+    <details className="ump-panel"><summary>集計条件・球審情報</summary><p>対象は「見逃しストライク」と「ボール」。空振り・ファウル・インプレー・死球・ワンバウンド・敬遠は対象外。位置欠測 {analysis.missingLocation}球。球審未登録 {analysis.unknownGames.length}試合。</p><p>期待率は同シーズンの他試合から、打者の左右、2ストライクか、3ボールかをそろえ、近い位置の判定を加重平均（横8.5cm・縦9.5cmのカーネル幅、3倍以内）。対象試合自身は学習に含みません。2試合以上・有効標本5球以上を必要とします。大学カードの絞込みでリーグの比較対象は狭めません。期待差は比較可能な球だけで計算するため、全見逃し球のCalled Strike%との差し算とは一致しない場合があります。</p><p>ゾーン枠は既存画面と同じ固定基準（横±25.4cm・高さ45〜105cm）です。打者個人の規則上の上下限ではありません。広さは50%判定となる境界の距離差であり、ptからcmに換算していません。上下左右の辺中央付近20球以上、ストライク・ボール各5球以上、比較側2試合以上を必要とします。</p><p>件数区分は比較球数で30未満＝参考、30〜79＝低、80〜149＝中、150以上＝高。統計的な精度の保証ではありません。球審・捕手・投手・打者・球種・試合を同時に分離したモデルではありません。</p><p>参考フレーミングは別捕手の比較可能20球以上を使用し、球審差をn/(n+50)で縮小して補正します。追加Sは得点への換算ではありません。</p><p>球審情報：ユーザー提供の2026年秋季リーグ・対戦カード別球審メモ（2026年9月17日・26日）。未登録試合は自動割当しません。</p>{analysis.mismatches.length>0&&<p role="alert">試合情報の不一致：{analysis.mismatches.join('・')}。該当試合は球審別集計から除外しました。</p>}</details>
   </section>;
 }

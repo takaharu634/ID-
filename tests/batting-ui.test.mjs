@@ -75,6 +75,40 @@ test('home batting and exit velocity highlights render actual players and number
   assert.match(markup, /打撃生産指数/);
 });
 
+test('dedicated AVG and OPS rankings use existing values and the matching PA sample', () => {
+  for (const [board, metric] of [['batting_average', 'battingAverage'], ['batting_ops', 'ops']]) {
+    const config = app.boardConfig(spring, board);
+    assert.equal(config.defaultSort, metric);
+    assert.equal(config.defaultDirection, 'desc');
+    const markup = render('LeaderboardsView', { data: spring, board, navigate });
+    const body = markup.match(/<tbody>(.*?)<\/tbody>/s)?.[1];
+    assert.ok(body?.includes('<tr'));
+    const official = spring.batters.find(row => row.officialRecord && row.trackmanRecord.pa !== row.pa);
+    assert.ok(official);
+    const row = config.rows.find(row => row.id === official.id);
+    assert.equal(row[metric], official[metric]);
+    assert.equal(row.pa, board === 'batting_ops' ? official.trackmanRecord.pa : official.pa);
+    if (board === 'batting_ops') {
+      assert.match(markup, /OPSは収録データによる参考値/);
+      assert.match(markup, /犠打・犠飛が区別されていない/);
+    }
+  }
+});
+
+test('strikeout rankings render the correct leaders and understandable navigation', () => {
+  const boards = ['pitching_strikeouts', 'pitching_strikeout_rate', 'pitching_strikeout_pitches'];
+  const expected = [/鈴木 泰成.*25.*21\.0%/, /髙木 大希.*13.*48\.1%/, /鈴木 泰成.*ストレート.*12.*48\.0%/];
+  for (const [index, board] of boards.entries()) {
+    const markup = render('LeaderboardsView', { data, board, navigate });
+    const body = markup.match(/<tbody>(.*?)<\/tbody>/s)?.[1];
+    assert.match(body?.match(/<tr[^>]*>(.*?)<\/tr>/s)?.[1] ?? '', expected[index]);
+    assert.match(markup, /三振を取った球種/);
+    assert.match(markup, /球種別の回転数/);
+    assert.match(markup, /投球総合スコア/);
+    assert.doesNotMatch(markup, /投球間隔|回転方向|パーセンタイル|打球プロファイル/);
+  }
+});
+
 test('batter detail renders measured exit speed, sample counts and unavailable evaluation honestly', () => {
   const batter = data.batters.find(row => row.bbe >= 5 && data.players.find(p => p.id === row.id)?.roles.join() === '打者');
   // Exercise an early-season profile even after the live season passes 20 PA.

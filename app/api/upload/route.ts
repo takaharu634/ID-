@@ -1,5 +1,5 @@
 import { adminApiGuard } from '../../admin-auth';
-import { commitStage, restoreSnapshot } from '../../../server/import-store.mjs';
+import { commitStage, restoreSnapshot, advanceStageVerification, advanceVerification, findSnapshot } from '../../../server/import-store.mjs';
 export const runtime = 'edge';
 type Env = { BUCKET?: R2Bucket; ADMIN_EMAILS?: string; ASSETS?: { fetch: typeof fetch } };
 export async function POST(request: Request) {
@@ -13,6 +13,9 @@ export async function POST(request: Request) {
   try {
     if (request.headers.get('content-type')?.includes('application/json')) {
       const body = await request.json();
+      const proof=body.action==='commit'?await advanceStageVerification(storage.BUCKET,String(body.id))
+        :body.action==='restore'?await advanceVerification(storage.BUCKET,await findSnapshot(storage.BUCKET,String(body.season),String(body.id))):null;
+      if(proof && !proof.complete)return Response.json({verifying:true,checked:proof.offset,total:proof.total},{status:202,headers:{'cache-control':'no-store'}});
       const v = body.action === 'restore'
         ? await restoreSnapshot(storage.BUCKET, String(body.season), String(body.id), body.expectedActive)
         : body.action === 'commit' ? await commitStage(storage.BUCKET, String(body.id), body.acknowledgeWarnings === true) : null;

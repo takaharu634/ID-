@@ -29,12 +29,19 @@ try {
  const row={...parsed.rows.at(-1),PitchUID:crypto.randomUUID(),PitchNo:'9999'};if(!row.Date)row.Date=parsed.rows.find(r=>r.GameUID===row.GameUID&&r.Date).Date;
  const baseline={raw,summary:await fs.readFile(root+'/public/data/season-2026-spring.json','utf8'),spin:await fs.readFile(root+'/public/data/spin-2026-spring.json','utf8')};
  const stage=await prepareImport(adapter,encodeCsv(parsed.headers,[row]),'isolated-test.csv',async()=>baseline);assert.equal(stage.report.addedRows,1);
- const requestAction=async body=>mf.dispatchFetch('http://test.local/api/upload',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify(body)});
+ const requestAction=async body=>{for(let attempt=0;attempt<100;attempt++){const r=await mf.dispatchFetch('http://test.local/api/upload',{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify(body)});if(r.status!==202)return r;await r.text();}assert.fail('verification did not finish');};
  const commit=await requestAction({action:'commit',id:stage.id,acknowledgeWarnings:true});assert.equal(commit.status,200,await commit.clone().text());
  const current=await mf.dispatchFetch('http://test.local/api/dataset?season='+season);const value=await current.json();assert.equal(value.pitches.length,11944);console.log('Real 11,943-pitch spring baseline + one test pitch committed through compiled API');
  const history=await (await mf.dispatchFetch('http://test.local/api/imports',{headers})).json();assert.equal(history.imports.length,2);const original=history.imports.find(v=>!v.isActive);
  const restore=await requestAction({action:'restore',id:original.id,season,expectedActive:stage.id});assert.equal(restore.status,200,await restore.clone().text());
  const restored=await mf.dispatchFetch('http://test.local/api/dataset?season='+season+'&format=csv',{headers});assert.deepEqual(Buffer.from(await restored.arrayBuffer()),Buffer.from(raw));console.log('Restore returns original CSV byte-for-byte; production data was never used or changed');
+ const future={...row,Date:'2035-05-01',GameUID:'future-game',PitchUID:crypto.randomUUID()};
+ const next=await prepareImport(adapter,encodeCsv(parsed.headers,[future]),'future.csv',async()=>({raw:'',summary:'',spin:'[]'}));
+ assert.equal((await requestAction({action:'commit',id:next.id,acknowledgeWarnings:true})).status,200);
+ const catalog=await (await mf.dispatchFetch('http://test.local/api/seasons')).json();assert.equal(catalog.latest,'2035-spring');
+ const futureData=await (await mf.dispatchFetch('http://test.local/api/dataset?season=2035-spring')).json();assert.equal(futureData.pitches.length,1);
+ assert.equal((await mf.dispatchFetch('http://test.local/api/dataset?season=2035-spring&format=csv')).status,401);
+ console.log('Future season appears automatically without build/deploy; raw data remains private');
 }finally{await mf.dispose();}
 
 });

@@ -1,5 +1,5 @@
 import { adminApiGuard } from '../../admin-auth';
-import { SUPPORTED_SEASONS } from '../../../lib/import-validation.mjs';
+import { isSeasonKey } from '../../../lib/seasons.mjs';
 declare const FixedLengthStream: new (length: number) => {readable:ReadableStream<Uint8Array>;writable:WritableStream<Uint8Array>};
 export const runtime = 'edge';
 const json = (error: string, status: number) => Response.json({ error }, { status, headers: { 'cache-control': 'no-store' } });
@@ -14,10 +14,11 @@ async function storageRequest(request: Request) {
   if (!storage.BUCKET) return json('保存領域が利用できません。',503);
   const key = new URL(request.url).searchParams.get('key') || '';
   const parts = key.split('/'), uuid = '[a-f0-9-]{36}';
-  const objectKey = new RegExp(`^datasets/v2/(2025-fall|2026-spring|2026-fall)/versions/${uuid}/(raw\\.csv|input\\.csv|summary\\.json|spin\\.json|report\\.json)$`).test(key);
+  const objectKey = new RegExp(`^datasets/v2/([1-9]\\d{3}-(?:spring|fall))/versions/${uuid}/(raw\\.csv|input\\.csv|summary\\.json|spin\\.json|report\\.json|sources\\.json)(\\.manifest\\.json)?$`).test(key);
   const stageKey = new RegExp(`^datasets/v2/staged/${uuid}\\.json$`).test(key);
-  const headKey = parts.length === 4 && parts[0] === 'datasets' && parts[1] === 'v2' && SUPPORTED_SEASONS.includes(parts[2]) && parts[3] === 'head.json';
-  if (!objectKey && !stageKey && !(request.method === 'GET' && headKey)) return json('保存先が不正です。',400);
+  const headKey = parts.length === 4 && parts[0] === 'datasets' && parts[1] === 'v2' && isSeasonKey(parts[2]) && parts[3] === 'head.json';
+  const blockKey=/^datasets\/v3\/[1-9]\d{3}-(?:spring|fall)\/blocks\/[a-f0-9]{64}\.gz\.b64$/.test(key);
+  if (!objectKey && !blockKey && !stageKey && !(request.method === 'GET' && headKey)) return json('保存先が不正です。',400);
   try {
     if (request.method === 'GET') {
       const object = await storage.BUCKET.get(key); if (!object) return new Response(null,{status:404});
@@ -36,7 +37,7 @@ async function storageRequest(request: Request) {
     transfer.catch(()=>{});
     try {
       const saved = await storage.BUCKET.put(key, stream.readable as unknown as Parameters<R2Bucket['put']>[1], {sha256:hash,onlyIf:new Headers({'If-None-Match':'*'}) as unknown as NonNullable<Parameters<R2Bucket['put']>[2]>['onlyIf'],httpMetadata:{contentType:key.endsWith('.csv')?'text/csv; charset=utf-8':'application/json'}});
-      if (!saved) { controller.abort(); await transfer.catch(()=>{}); return json('同じ保存IDが既に存在します。再度検証してください。',409); }
+      if (!saved) { controller.abort(); await transfer.catch(()=>{}); const existing=await storage.BUCKET.get(key); if(existing && await import('../../../server/object-store.mjs').then(m=>existing.text().then(text=>m.sha256(text)))===hash) return Response.json({etag:existing.etag},{headers:{'cache-control':'no-store'}}); return json('同じ保存IDが既に存在します。再度検証してください。',409); }
       await transfer;
       return Response.json({etag:saved.etag},{headers:{'cache-control':'no-store'}});
     } catch(error) { controller.abort(); await transfer.catch(()=>{}); throw error; }

@@ -1,5 +1,6 @@
 'use client';
 import { useId, useMemo, useState, type ReactNode } from 'react';
+import { catcherGridIndex } from '../lib/catcher-view';
 import { fieldSector } from '../lib/chart-geometry';
 import type { Row } from '../lib/dataset-types';
 import { BATTER_FAMILIES, batterFamily, reportAverage, reportContact, reportNineZone, reportRate, reportRisp, reportStats } from '../lib/batter-side-report';
@@ -12,7 +13,7 @@ const mixOf=(rows:Row[])=>[...new Set(rows.map(p=>p.pitchType||'不明'))].map(t
 
 function NineMap({rows,frequency=false}:{rows:Row[];frequency?:boolean}) {
   return <svg viewBox="0 0 240 240" role="img" aria-label={frequency?'9エリア別投球数と全投球に対する割合':'9エリア別打数・安打・打率・本塁打・三振'}>{Array.from({length:9},(_,i)=>{
-    const subset=rows.filter(p=>reportNineZone(p)===i),s=reportStats(subset),x=i%3*80,y=Math.floor(i/3)*80;
+    const subset=rows.filter(p=>reportNineZone(p)===i),s=reportStats(subset),x=catcherGridIndex(i,3)%3*80,y=Math.floor(i/3)*80;
     const share=rows.length?subset.length/rows.length:0;
     return <g key={i}><rect x={x} y={y} width="80" height="80" stroke="#9aa9b2" fill={frequency&&subset.length?(share>=.15?'#f8d2cb':share<.1?'#cce9eb':'#fff'):'#fff'}/>
       {frequency?<><text x={x+40} y={y+34} textAnchor="middle" fontSize="23" fontWeight="700">{subset.length}</text><text x={x+40} y={y+59} textAnchor="middle" fontSize="16">{rows.length?`${(share*100).toFixed(1)}%`:'—'}</text></>:<>

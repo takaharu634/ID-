@@ -3,6 +3,8 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
+import { catcherX } from "../lib/catcher-view";
+import { pitchProjection } from "../lib/chart-geometry";
 import { loadStaticDataset } from "../lib/dataset-loader";
 
 export type PitchMeasurement = {
@@ -29,7 +31,7 @@ export type PitchMeasurement = {
 };
 
 type SavantPitch = Record<string, unknown>;
-type SeasonId = "2026-fall" | "2026-spring" | "2025-fall";
+type SeasonId = import('../lib/dataset-types').SeasonKey;
 
 type PitchSpinProfileProps = {
   season: SeasonId;
@@ -262,7 +264,7 @@ function SpinScene({ profile, speed, paused }: { profile: PitchProfile; speed: n
     if (canvasRef.current) return startSpinAnimation(canvasRef.current, profile, speed, paused, rotationRef);
   }, [profile, speed, paused]);
 
-  return <canvas ref={canvasRef} className="spin-canvas" role="img" data-view="pitcher" data-rotation-direction={profile.rotationDirection < 0 ? "clockwise" : "counterclockwise"} data-seam-placement={profile.seamPlacement} aria-label={`${profile.label}の投手視点・推定3D回転アニメーション`} />;
+  return <canvas ref={canvasRef} className="spin-canvas" role="img" data-view="pitcher" data-rotation-direction={profile.rotationDirection < 0 ? "clockwise" : "counterclockwise"} data-seam-placement={profile.seamPlacement} aria-label={`${profile.label}の投手後方視点・推定3D回転アニメーション`} />;
 }
 
 export function startSpinAnimation(canvas: HTMLCanvasElement, profile: PitchProfile, speed: number, paused: boolean, rotationRef: { current: number }) {
@@ -476,7 +478,7 @@ export function startSpinAnimation(canvas: HTMLCanvasElement, profile: PitchProf
       });
 
       // Rapsodo/TrackMan-inspired high-contrast axis rod. The filled endpoint is
-      // the catcher-facing end; the dashed endpoint is behind the ball.
+      // the pitcher-facing end; the dashed endpoint is behind the ball.
       const rodScale = 1.48;
       const rodStartX = cx - axisScreen.x * radius * rodScale;
       const rodStartY = cy - axisScreen.y * radius * rodScale;
@@ -533,17 +535,20 @@ function clamp(value: number, minimum: number, maximum: number) {
 }
 
 function PitchLocationChart({ pitch, color }: { pitch: PitchMeasurement; color: string }) {
-  const hasLocation = pitch.plateLocHeight !== null && pitch.plateLocSide !== null;
-  const x = hasLocation ? clamp(65 + pitch.plateLocSide! / 0.254 * 29, 8, 122) : 65;
-  const y = hasLocation ? clamp(108 - (pitch.plateLocHeight! - 0.45) / 0.6 * 86, 6, 124) : 65;
+  const hasLocation = Number.isFinite(pitch.plateLocHeight) && Number.isFinite(pitch.plateLocSide);
+  const extent = Math.max(.55, hasLocation ? Math.abs(pitch.plateLocSide!) + .05 : 0);
+  const projection = pitchProjection(130, 130, {left:-extent,right:extent,bottom:Math.min(.15,hasLocation ? pitch.plateLocHeight!-.05 : .15),top:Math.max(1.35,hasLocation ? pitch.plateLocHeight!+.05 : 1.35)},8);
+  const x = projection.x(hasLocation ? catcherX(pitch.plateLocSide!) : 0);
+  const y = projection.y(hasLocation ? pitch.plateLocHeight! : .75);
+  const zoneLeft=projection.x(-.254),zoneRight=projection.x(.254),zoneTop=projection.y(1.05),zoneBottom=projection.y(.45);
   const inZone = hasLocation && Math.abs(pitch.plateLocSide!) <= 0.254 && pitch.plateLocHeight! >= 0.45 && pitch.plateLocHeight! <= 1.05;
   return (
     <section className="mini-chart" aria-label="捕手側から見た9分割ストライクゾーンの投球位置">
       <div><strong>PITCH LOCATION</strong><span>{hasLocation ? (inZone ? "ZONE" : "OUT") : "NO DATA"}</span></div>
       <svg viewBox="0 0 130 130" role="img" aria-label={hasLocation ? `プレート横位置${pitch.plateLocSide!.toFixed(2)}メートル、高さ${pitch.plateLocHeight!.toFixed(2)}メートル` : "投球位置データなし"}>
-        <rect x="36" y="22" width="58" height="86" rx="3" className="chart-zone" />
-        <path d="M55.33 22V108M74.67 22V108M36 50.67H94M36 79.33H94" className="chart-grid" />
-        <path d="M65 6V124M8 65H122" className="chart-crosshair" />
+        <rect x={zoneLeft} y={zoneTop} width={zoneRight-zoneLeft} height={zoneBottom-zoneTop} className="chart-zone" />
+        {[1,2].map(i=><g key={i} className="chart-grid"><line x1={zoneLeft+(zoneRight-zoneLeft)*i/3} x2={zoneLeft+(zoneRight-zoneLeft)*i/3} y1={zoneTop} y2={zoneBottom}/><line x1={zoneLeft} x2={zoneRight} y1={zoneTop+(zoneBottom-zoneTop)*i/3} y2={zoneTop+(zoneBottom-zoneTop)*i/3}/></g>)}
+        <path d={`M${projection.x(0)} 6V124M8 ${projection.y(.75)}H122`} className="chart-crosshair" />
         {hasLocation ? <><circle cx={x} cy={y} r="8" fill="white" opacity=".95" /><circle cx={x} cy={y} r="5.2" fill={color} /></> : <text x="65" y="70" textAnchor="middle">位置データなし</text>}
       </svg>
       <p>{hasLocation ? `捕手視点｜Side ${signed(pitch.plateLocSide! * 100)} / Height ${(pitch.plateLocHeight! * 100).toFixed(1)} cm` : "捕手視点｜PlateLoc未記録"}</p>
@@ -558,11 +563,11 @@ function MovementCrossChart({ pitch, color, average = false }: { pitch: Pick<Pit
   return (
     <section className="mini-chart" aria-label={average ? "球種平均の縦横変化量" : "投球別の縦横変化量"}>
       <div><strong>{average ? "AVERAGE MOVEMENT" : "MOVEMENT"}</strong><span>±70 cm</span></div>
-      <svg viewBox="0 0 130 130" role="img" aria-label={`IVB ${signed(pitch.ivb)}センチ、HB ${signed(pitch.hb)}センチ`}>
+      <svg viewBox="0 0 130 130" role="img" aria-label={`投手後方視点、IVB ${signed(pitch.ivb)}センチ、HB ${signed(pitch.hb)}センチ`}>
         <rect x="10" y="10" width="110" height="110" rx="7" className="chart-frame" />
         <path d="M65 10V120M10 65H120" className="chart-crosshair strong" />
         <text x="65" y="8" textAnchor="middle">+IVB</text><text x="65" y="129" textAnchor="middle">−IVB</text>
-        <text x="121" y="61" textAnchor="end">+HB 捕手右</text><text x="11" y="61">捕手左 −HB</text>
+        <text x="121" y="61" textAnchor="end">+HB 投手右</text><text x="11" y="61">投手左 −HB</text>
         <circle cx={x} cy={y} r="8" fill="white" opacity=".95" /><circle cx={x} cy={y} r="5.2" fill={color} />
       </svg>
       <p>IVB {signed(pitch.ivb)} / HB {signed(pitch.hb)} cm</p>
@@ -697,7 +702,7 @@ export default function PitchSpinProfile({ season, playerId, playerName, pitches
             <SpinScene profile={displayProfile} speed={speed} paused={paused} />
             <div className="orientation"><span className="orientation-n">12</span><span className="orientation-e">3</span><span className="orientation-s">6</span><span className="orientation-w">9</span><div className="orientation-ring" /></div>
             <div className="axis-guide" aria-label="回転軸端の見方"><strong>3D SPIN AXIS</strong><span><i className="axis-front-marker" />手前側</span><span><i className="axis-back-marker" />奥側</span></div>
-            <div className="axis-readout"><small>回転方向（クロック）</small><strong>{clockFromAxis(displayProfile.spinAxis)}</strong><span>Spin Axis {displayProfile.spinAxis.toFixed(1)}° · {displayProfile.estimateCount ? `Gyro ${displayProfile.gyroAngle.toFixed(1)}°（推定）` : "傾き推定不可・平面表示"}</span><em>投手後方視点 · TrackMan軸準拠</em></div>
+            <div className="axis-readout"><small>回転方向（クロック）</small><strong>{clockFromAxis(displayProfile.spinAxis)}</strong><span>Spin Axis {displayProfile.spinAxis.toFixed(1)}° · {displayProfile.estimateCount ? `Gyro ${displayProfile.gyroAngle.toFixed(1)}°（推定）` : "傾き推定不可・平面表示"}</span><em>投手後方視点</em></div>
             <div className={`pitch-data-charts ${mode === "average" ? "average-only" : ""}`}>{mode === "pitch" && pitch ? <><PitchLocationChart pitch={pitch} color={displayProfile.color} /><MovementCrossChart pitch={pitch} color={displayProfile.color} /></> : <MovementCrossChart pitch={displayProfile} color={displayProfile.color} average />}</div>
           </div>
           <div className="playback-bar"><button type="button" className="play-button" onClick={() => setPaused((value) => !value)} aria-label={paused ? "再生" : "一時停止"}>{paused ? "▶" : "Ⅱ"}</button><div className="speed-control"><span>表示速度</span><div>{speedOptions.map((option) => <button key={option.value} type="button" className={speed === option.value ? "active" : ""} onClick={() => setSpeed(option.value)}>{option.label}</button>)}</div></div><p><span className="axis-key" /> 白縁ライン＝推定回転軸 <span className="arrow-key" /> 回転方向</p></div>
@@ -709,7 +714,7 @@ export default function PitchSpinProfile({ season, playerId, playerName, pitches
           <div className="measured-card"><div className="section-label"><span>TRACKMAN MEASURED</span><small>実測</small></div><div><span>Spin Axis<strong>{displayProfile.spinAxis.toFixed(1)}°</strong></span><span>Measured Tilt<strong>{displayProfile.measuredTilt}</strong></span></div></div>
           <div className="movement-card"><div className="section-label"><span>MOVEMENT</span><small>{mode === "average" ? "平均変化量" : "投球別変化量"}</small></div><div className="movement-grid"><div><span>IVB</span><strong>{signed(displayProfile.ivb)}</strong><small>cm</small></div><div><span>HB</span><strong>{signed(displayProfile.hb)}</strong><small>cm</small></div></div></div>
           <div className="data-card"><div className="section-label"><span>DATA BASIS</span><small>表示根拠</small></div><dl><div><dt>球種分類</dt><dd>分析画面と同じ球種</dd></div>{mode === "average" ? <><div><dt>対象球数</dt><dd>{profile.count} 球</dd></div><div><dt>標本数の目安</dt><dd>{profile.confidence}</dd></div><div><dt>回転軸集計</dt><dd>円周平均</dd></div><div><dt>3D推定対象</dt><dd>{profile.estimateCount}球の中央値</dd></div></> : <><div><dt>元分類</dt><dd>{pitch?.rawPitchType || "—"}</dd></div><div><dt>計測日</dt><dd>{pitch?.date || "—"}</dd></div><div><dt>Pitch No.</dt><dd>{pitch?.pitchNo ?? "—"}</dd></div><div><dt>3D推定値</dt><dd>{displayProfile.estimateCount ? "当該投球" : "モデル範囲外・計算不可"}</dd></div></>}<div><dt>ボールモデル</dt><dd>108ダブルステッチ</dd></div><div><dt>縫い目配置</dt><dd>{profile.seamPlacement === "four-seam" ? "4シーム基準" : "表示用初期位相"}</dd></div></dl></div>
-          {season === "2026-fall" && <details className="chart-definition"><summary>推定方法</summary><p>秋の推定は標準空気密度を仮定した<a href="https://baseball.physics.illinois.edu/trackman/SpinAxis.pdf" target="_blank" rel="noreferrer">Nathanモデル</a>を使用します。天候や縫い目による空力の影響は未補正で、実測3D回転ではありません。</p></details>}
+          {!["2025-fall", "2026-spring"].includes(season) && <details className="chart-definition"><summary>推定方法</summary><p>秋の推定は標準空気密度を仮定した<a href="https://baseball.physics.illinois.edu/trackman/SpinAxis.pdf" target="_blank" rel="noreferrer">Nathanモデル</a>を使用します。天候や縫い目による空力の影響は未補正で、実測3D回転ではありません。</p></details>}
           <details className="accuracy-note chart-definition"><summary>計測・推定の区分</summary><p><strong>軌道データからの推定</strong>Spin Rate・Spin Axis・Measured Tilt・IVB・HBはTrackMan実測値です。Gyro Angle・Spin Efficiency・Active Spinは軌道からの参考推定です。推定不能の球は数値を補わず、回転軸の傾きを付けない平面アニメーションで表示します。縫い目の配置と軸の前後方向は表示上の仮定です。平均表示の変化量チャートは平均IVB・平均HB、1球表示は当該投球の値です。</p></details>
         </aside>
       </div>

@@ -1,0 +1,1 @@
+ALTER TABLE `trackman_push_files` ADD `fingerprint` text;

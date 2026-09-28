@@ -1,7 +1,8 @@
+import { catcherX } from './catcher-view.ts';
 import type { Dataset, Row } from './dataset-types.ts';
 import { DEFAULT_ZONE as ZONE } from './scouting-analytics.ts';
 
-// User's 2026 autumn plate-umpire memo, supplied 2026-09-17. Exact game IDs,
+// User's 2026 autumn plate-umpire memos, supplied 2026-09-17 and 2026-09-26. Exact game IDs,
 // dates and both teams are checked; future games are never assigned by rotation.
 export const UMPIRE_ASSIGNMENTS = [
   ['5ecf7804-f446-4d0e-9999-e24514f6a185','2026-09-08','立正大学','國學院大學','岩崎'],
@@ -12,6 +13,17 @@ export const UMPIRE_ASSIGNMENTS = [
   ['723a31a5-4d73-4b62-8aa1-66f696860a74','2026-09-08','中央大学','青山学院大学','川合'],
   ['408de075-ce56-491e-a7d4-1221b0dcd78a','2026-09-09','青山学院大学','中央大学','石丸'],
   ['e11c8806-a948-40df-abfc-f2c4670766d4','2026-09-10','青山学院大学','中央大学','熊倉'],
+  ['26184f26-271e-450b-87db-b18a0a533e27','2026-09-18','東洋大学','青山学院大学','吉田'],
+  ['844da01e-4d2a-4ebc-ab43-0fd62c44be20','2026-09-18','立正大学','亜細亜大学','湯田'],
+  ['9d464b82-3ccc-4002-8d69-b87e3cf8048d','2026-09-18','中央大学','國學院大學','石丸'],
+  ['ad7b3b80-0af4-473b-a57b-66c15b5177fb','2026-09-24','青山学院大学','東洋大学','熊倉'],
+  ['75ba3be9-caa5-4715-b40e-62c4d90e45b2','2026-09-24','亜細亜大学','立正大学','菅原'],
+  ['b04e7d0c-7511-4d10-b192-06401e4f01f2','2026-09-24','國學院大學','中央大学','吉田'],
+] as const;
+// The 2026-09-25 CSV is not available yet. Keep the user's explicit memo without
+// inventing a GameUID; apply it only to one exact date/home/away match after import.
+export const UMPIRE_MEMOS_WITHOUT_GAME_ID = [
+  ['2026-09-25','國學院大學','中央大学','福壽'],
 ] as const;
 export type Take = Row & { actual: number; expected: number | null; umpire: string; plateX: number; plateZ: number };
 export type Summary = ReturnType<typeof summarize>;
@@ -39,6 +51,12 @@ export function buildUmpireAnalysis(data: Dataset) {
     const g=data.games.find(g=>g.id===id); if(!g) continue;
     if(g.date!==date || g.homeTeam!==home || g.awayTeam!==away) { mismatches.push(name); continue; }
     assignments.set(id,name);
+  }
+  for(const [date,home,away,name] of UMPIRE_MEMOS_WITHOUT_GAME_ID) {
+    const matches=data.games.filter(g=>g.date===date && g.homeTeam===home && g.awayTeam===away);
+    if(!matches.length) continue;
+    if(matches.length!==1 || (assignments.has(matches[0].id) && assignments.get(matches[0].id)!==name)) { mismatches.push(name); continue; }
+    assignments.set(matches[0].id,name);
   }
   const ids=new Set<string>(); const takes:Take[]=[]; let missingLocation=0;
   for(const p of data.pitches) {
@@ -68,9 +86,11 @@ export function summarize(rows: Take[]) {
     outsideN:outside.length,outsideRate:outside.length?outside.reduce((s,p)=>s+p.actual,0)/outside.length:null};
 }
 export type Perspective = 'umpire'|'batter';
-// TrackMan PlateLocSide is catcher's view: positive = catcher's right.
-// For right-handed batters that side is inside. Normalize inside to display left.
-export function displayX(p: Row, perspective: Perspective) { return perspective==='batter' && p.batterSide==='右' ? -p.plateX : p.plateX; }
+// Keep optional batter-relative calculations inside-left; all site maps use catcher view.
+export function displayX(p: Row, perspective: Perspective) {
+  const x = catcherX(p.plateX);
+  return perspective === 'batter' && p.batterSide === '左' ? -x : x;
+}
 export const REGIONS=['高め','低め','左','右','左上','右上','左下','右下'];
 export function region(p: Take,perspective: Perspective) {
   const x=displayX(p,perspective), z=p.plateZ;

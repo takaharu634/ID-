@@ -1,6 +1,7 @@
 'use client';
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import BatterPdfReport, { type BatterReportProps } from './batter-pdf-report';
+import { catcherGridIndex } from '../lib/catcher-view';
 import { fieldSector } from '../lib/chart-geometry';
 import type { Row } from '../lib/dataset-types';
 import { BATTER_FAMILIES, batterFamily, reportAverage, reportContact, reportDirection, reportEV, reportZone, measuredEV } from '../lib/batter-side-report';
@@ -11,7 +12,7 @@ const evColor = (n: number | null) => n === null ? '#ffffff' : n < 120 ? '#dce8f
 
 function EVMap({ rows }: { rows: Row[] }) {
   return <svg viewBox="0 0 250 305" role="img" aria-label="捕手側から見たコース別平均打球速度と有効打球数">
-    {Array.from({length:25},(_,i)=>{const v=reportEV(rows.filter(p=>reportZone(p)===i)); const x=i%5*50,y=Math.floor(i/5)*59.055118; return <g key={i}>
+    {Array.from({length:25},(_,i)=>{const v=reportEV(rows.filter(p=>reportZone(p)===i)); const x=catcherGridIndex(i,5)%5*50,y=Math.floor(i/5)*59.055118; return <g key={i}>
       <rect x={x} y={y} width="50" height="59.055118" fill={v.n>=5?evColor(v.avg):'#fff'} stroke="#c5d0d2"/>
       <text x={x+25} y={y+23} textAnchor="middle" fontSize="15" fontWeight="700">{num(v.avg)}</text>
       <text x={x+25} y={y+41} textAnchor="middle" fontSize="11" fill="#48595d">n={v.n}</text>

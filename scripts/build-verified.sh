@@ -23,6 +23,7 @@ if [[ -d "${SITES_PROJECT_ROOT}/public/print-qa" ]]; then
   exit 1
 fi
 
+node "${script_dir}/build-drive-push.mjs"
 node "${script_dir}/prepare-data.mjs"
 npm run typecheck
 

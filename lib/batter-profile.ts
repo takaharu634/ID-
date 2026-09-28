@@ -281,8 +281,8 @@ export function catcherViewZoneOrder<T extends { index: number }>(zones: T[], ba
     const aRow = Math.floor(a.index / 3), bRow = Math.floor(b.index / 3);
     if (aRow !== bRow) return aRow - bRow;
     const aColumn = a.index % 3, bColumn = b.index % 3;
-    const aCatcherColumn = batterSide === "左" ? 2 - aColumn : aColumn;
-    const bCatcherColumn = batterSide === "左" ? 2 - bColumn : bColumn;
+    const aCatcherColumn = batterSide === "右" ? 2 - aColumn : aColumn;
+    const bCatcherColumn = batterSide === "右" ? 2 - bColumn : bColumn;
     return aCatcherColumn - bCatcherColumn;
   });
 }

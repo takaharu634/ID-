@@ -2,18 +2,15 @@
 
 import { PlayerOptions, comparePlayerNames } from './player-options';
 import { useEffect, useMemo, useState } from "react";
+import { catcherGridOrder } from '../lib/catcher-view';
 import { BarrelMetric as Metric, canonicalPlayerKey, summarizeBarrelZones } from "./barrel-zone-engine";
 
-import type { Row, Dataset } from "../lib/dataset-types";
+import type { Row, Dataset, SeasonKey } from "../lib/dataset-types";
 import { loadStaticDataset } from "../lib/dataset-loader";
-type SeasonFilter = "compare" | "compare-previous" | "combined" | "2025-fall" | "2026-spring" | "2026-fall";
+type SeasonFilter = "compare" | "compare-previous" | "combined" | SeasonKey;
 type Role = "batting" | "pitching";
 
-const SEASONS = [
-  { key: "2026-fall", label: "2026秋", path: "/data/season-2026-fall.json" },
-  { key: "2026-spring", label: "2026春", path: "/data/season-2026-spring.json" },
-  { key: "2025-fall", label: "2025秋", path: "/data/season-2025-fall.json" },
-] as const;
+import { useSeasonCatalog } from "../lib/season-catalog";
 
 function heatColor(rate: number | null, metric: Metric) {
   if (rate === null) return "#f4f5f5";
@@ -34,7 +31,7 @@ function Heatmap({ pitches, metric, minimum, title }: { pitches: Row[]; metric: 
   return <article className="barrel-heatmap-card">
     <header><div><h3>{title}</h3><p>{metric === "swings" ? "Barrel相当 / Swings" : "Barrel相当 / BIP"}</p></div><strong>{used ? `${(barrels / used * 100).toFixed(1)}%` : "—"}<small>{barrels} / {used}</small></strong></header>
     <div className="barrel-zone-axis"><span>高め</span><div className="barrel-zone-grid" aria-label={`${title}のゾーン別Barrel相当率`}>
-      {cells.map((cell) => {
+      {catcherGridOrder(cells, 5).map((cell) => {
         const lowSample = cell.denominator > 0 && cell.denominator < minimum;
         return <div key={`${cell.row}-${cell.col}`} className={`barrel-zone-cell ${cell.row >= 1 && cell.row <= 3 && cell.col >= 1 && cell.col <= 3 ? "strike-cell" : "ball-cell"} ${lowSample ? "low-sample" : ""}`} style={{ background: heatColor(cell.rate, metric) }} title={`Barrel相当 ${cell.numerator} / ${cell.denominator}`}>
           <b>{cell.rate === null ? "—" : `${(cell.rate * 100).toFixed(cell.rate > 0 ? 1 : 0)}%`}</b><small>{cell.denominator ? `${cell.numerator}/${cell.denominator}` : "n=0"}</small>
@@ -45,7 +42,10 @@ function Heatmap({ pitches, metric, minimum, title }: { pitches: Row[]; metric: 
   </article>;
 }
 
-export default function BarrelZoneView({ initialSeason = "2026-fall", initialData }: { initialSeason?: "2026-fall" | "2026-spring" | "2025-fall"; initialData?: Dataset }) {
+export default function BarrelZoneView({ initialSeason = "2026-fall", initialData }: { initialSeason?: SeasonKey; initialData?: Dataset }) {
+  const catalog = useSeasonCatalog();
+  const SEASONS = useMemo(()=>Object.values(catalog.seasons),[catalog.seasons]);
+  const [combinedKeys,setCombinedKeys]=useState<string[]>([]);
   const [datasets, setDatasets] = useState<Record<string, Dataset>>(initialData ? { [initialSeason]: initialData } : {});
   const [error, setError] = useState("");
   const [role, setRole] = useState<Role>("batting");
@@ -58,17 +58,18 @@ export default function BarrelZoneView({ initialSeason = "2026-fall", initialDat
   const [pitcherThrows, setPitcherThrows] = useState("");
   const [minimum, setMinimum] = useState(5);
 
+  const seasonKeys = useMemo(() => season === "compare" ? SEASONS.slice(0,2).map(s=>s.key) : season === "compare-previous" ? SEASONS.slice(1,3).map(s=>s.key) : season === "combined" ? (combinedKeys.length?combinedKeys:SEASONS.slice(0,3).map(s=>s.key)) : [season], [season,SEASONS,combinedKeys]);
   useEffect(() => {
     let active = true;
-    Promise.all(SEASONS.map(async item => [item.key, await loadStaticDataset<Dataset>(item.path)] as const))
+    setError('');
+    Promise.all(SEASONS.filter(s=>seasonKeys.includes(s.key)).map(async item => [item.key, await loadStaticDataset<Dataset>(item.path)] as const))
       .then(entries => { if (active) setDatasets(Object.fromEntries(entries)); })
       .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : "データを読み込めませんでした。"); });
     return () => { active = false; };
-  }, []);
+  }, [seasonKeys, SEASONS, catalog.revision]);
 
   const allPitches = useMemo<Row[]>(() => SEASONS.flatMap((item) => (datasets[item.key]?.pitches ?? []).map((pitch): Row => ({ ...pitch, seasonKey: item.key }))), [datasets]);
 
-  const seasonKeys = useMemo(() => season === "compare" ? ["2026-spring", "2026-fall"] : season === "compare-previous" ? ["2025-fall", "2026-spring"] : season === "combined" ? SEASONS.map(item => item.key) : [season], [season]);
   const periodPitches = useMemo(() => allPitches.filter(pitch => seasonKeys.includes(pitch.seasonKey)), [allPitches, seasonKeys]);
   const teams = [...new Set(allPitches.map(pitch => role === "batting" ? pitch.batterTeam : pitch.pitcherTeam))].filter(Boolean).sort();
   const candidates = useMemo(() => {
@@ -98,7 +99,7 @@ export default function BarrelZoneView({ initialSeason = "2026-fall", initialDat
     return true;
   }), [periodPitches, role, team, effectivePlayerKey, pitchType, batterSide, pitcherThrows]);
   const player = candidates.find((row) => row.key === effectivePlayerKey);
-  const panels = season.startsWith("compare") ? SEASONS.filter(item => seasonKeys.includes(item.key)).reverse().map((item) => ({ title: item.label, pitches: filtered.filter((pitch) => pitch.seasonKey === item.key) })) : season === "combined" ? [{ title: "2025秋＋2026春＋2026秋 合算", pitches: filtered }] : batterSide ? [{ title: `${SEASONS.find((item) => item.key === season)?.label}・${batterSide}打者`, pitches: filtered }] : [
+  const panels = season.startsWith("compare") ? SEASONS.filter(item => seasonKeys.includes(item.key)).reverse().map((item) => ({ title: item.label, pitches: filtered.filter((pitch) => pitch.seasonKey === item.key) })) : season === "combined" ? [{ title: seasonKeys.map(k=>catalog.seasons[k as SeasonKey]?.shortLabel).join("＋") + " 合算", pitches: filtered }] : batterSide ? [{ title: `${SEASONS.find((item) => item.key === season)?.label}・${batterSide}打者`, pitches: filtered }] : [
     { title: `${SEASONS.find((item) => item.key === season)?.label}・右打者`, pitches: filtered.filter((pitch) => pitch.batterSide === "右") },
     { title: `${SEASONS.find((item) => item.key === season)?.label}・左打者`, pitches: filtered.filter((pitch) => pitch.batterSide === "左") },
   ];
@@ -110,12 +111,13 @@ export default function BarrelZoneView({ initialSeason = "2026-fall", initialDat
       <div className="segmented"><button className={role === "batting" ? "active" : ""} onClick={() => { setRole("batting"); setPlayerKey(""); }}>打者（生み出した）</button><button className={role === "pitching" ? "active" : ""} onClick={() => { setRole("pitching"); setPlayerKey(""); }}>投手（許した）</button></div>
       <label>大学<select value={team} onChange={(event) => { setTeam(event.target.value); setPlayerKey(""); }}>{teams.map((value) => <option key={value}>{value}</option>)}</select></label>
       <label>{role === "batting" ? "打者" : "投手"}<select value={effectivePlayerKey} onChange={(event) => setPlayerKey(event.target.value)}><PlayerOptions players={candidates} valueKey="key" /></select></label>
-      <label>シーズン<select value={season} onChange={(event) => setSeason(event.target.value as SeasonFilter)}><option value="2026-fall">2026秋（左右比較）</option><option value="compare">2026春 vs 2026秋</option><option value="compare-previous">2025秋 vs 2026春</option><option value="combined">2025秋＋2026春＋2026秋 合算</option><option value="2025-fall">2025秋（左右比較）</option><option value="2026-spring">2026春（左右比較）</option></select></label>
+      <label>シーズン<select value={season} onChange={(event) => setSeason(event.target.value as SeasonFilter)}>{SEASONS.map(s=><option key={s.key} value={s.key}>{s.shortLabel}（左右比較）</option>)}<option value="compare">直近2シーズン比較</option><option value="compare-previous">前の2シーズン比較</option><option value="combined">選択シーズンの合算</option></select></label>
       <label>球種<select value={pitchType} onChange={(event) => setPitchType(event.target.value)}><option value="">すべて</option>{pitchTypes.map((value) => <option key={value}>{value}</option>)}</select></label>
       <label>打者左右<select value={batterSide} onChange={(event) => setBatterSide(event.target.value)}><option value="">左右すべて</option><option value="右">右打者</option><option value="左">左打者</option></select></label>
       <label>投手左右<select value={pitcherThrows} onChange={(event) => setPitcherThrows(event.target.value)}><option value="">左右すべて</option><option value="右">右投手</option><option value="左">左投手</option></select></label>
       <label>薄表示の基準<input type="number" min="1" max="50" value={minimum} onChange={(event) => setMinimum(Math.max(1, Number(event.target.value) || 1))} /></label>
     </div>
+    {season==="combined" && <label>合算するシーズン<select multiple aria-label="合算するシーズン" value={seasonKeys} onChange={e=>setCombinedKeys([...e.target.selectedOptions].map(o=>o.value))}>{SEASONS.map(s=><option key={s.key} value={s.key}>{s.shortLabel}</option>)}</select></label>}
     <div className="segmented barrel-metric"><button className={metric === "swings" ? "active" : ""} onClick={() => setMetric("swings")}>Barrel相当 / Swings</button><button className={metric === "bip" ? "active" : ""} onClick={() => setMetric("bip")}>Barrel相当 / BIP</button></div>
     {error && !seasonKeys.every(key => datasets[key]) ? <div className="empty-state"><h2>{error}</h2></div> : !seasonKeys.every(key => datasets[key]) ? <div className="loading-panel">シーズンデータを集計しています…</div> : <>
       <div className="barrel-summary"><div><small>{role === "batting" ? "打者" : "投手"}</small><strong>{player?.kanji || player?.name || "—"}</strong><span>{team}</span></div><div><small>対象球</small><strong>{filtered.length.toLocaleString("ja-JP")}</strong><span>コース記録をフィルター後に集計</span></div></div>

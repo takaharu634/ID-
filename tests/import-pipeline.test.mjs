@@ -31,8 +31,9 @@ test('conflicting UID or game pitch number never silently overwrites',()=>{
   assert.throws(()=>mergeImport(text,csv([sample({PitchUID:'p2'})])),/異なる投球ID/);
 });
 test('season inference recovers date only from same game, rejects mixed or invalid seasons',()=>{
+  assert.equal(detectSeason([sample({Date:'2027-04-01'})]).season,'2027-spring');
   const rows=[sample({Date:'2026/9/1'}),sample({Date:'',PitchNo:'2',PitchUID:'p2'})];assert.deepEqual(detectSeason(rows),{season:'2026-fall',recoveredDates:1});assert.equal(rows[1].Date,'2026-09-01');
-  for(const rows of [[sample({Date:''})],[sample({Date:'2026-02-30'})],[sample(),sample({Date:'2026-04-01',GameUID:'g2'})],[sample({Date:'2027-04-01'})]])assert.throws(()=>detectSeason(rows));
+  for(const rows of [[sample({Date:''})],[sample({Date:'2026-02-30'})],[sample(),sample({Date:'2026-04-01',GameUID:'g2'})]])assert.throws(()=>detectSeason(rows));
 });
 test('missing structural columns and invalid measurements stop processing; unmeasured is warning',()=>{
   const row=sample();delete row.HomeTeam;assert.throws(()=>csvRows(csv([row])),/HomeTeam/);
@@ -45,7 +46,7 @@ test('pitcher exceptions preserve raw type and have exact boundaries',()=>{
   const f=buildDatasetFromCsv(csv([sample({Pitcher:'Fujimoto, Shisei',PitcherTeam:'KOK_UNI',RelSpeed:'120',TaggedPitchType:'Curveball'})]),{applyPlayerRules:true});assert.equal(f.pitches[0].pitchType,'チェンジアップ');
 });
 test('prepare, acknowledge, commit, restore and idempotent commit retain every saved version',async()=>{
-  const bucket=new Bucket(),baseline=base();const incoming=csv([sample({PitchNo:'2',PitchUID:'p2'})]);
+  const bucket=new Bucket(),baseline=base();const incoming=csv([sample({PitchNo:'2',PitchUID:'p2',RelSpeed:''})]);
   const result=await prepareImport(bucket,incoming,'new.csv',async()=>baseline);assert.equal(result.report.addedRows,1);assert.equal((await readHead(bucket,'2026-fall')).active,null);
   await assert.rejects(commitStage(bucket,result.id),/確認/);const v=await commitStage(bucket,result.id,true);assert.equal(v.pitchCount,2);
   assert.equal((await commitStage(bucket,result.id,true)).id,v.id);

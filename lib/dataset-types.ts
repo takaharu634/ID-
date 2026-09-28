@@ -15,9 +15,4 @@ export type Dataset = {
   pitches: Row[];
   highlights: Row;
 };
-export type SeasonKey = "2026-fall" | "2026-spring" | "2025-fall";
-export const SEASONS: Record<SeasonKey, { label: string; year: string; term: string; path: string }> = {
-  "2026-fall": { label: "2026年 秋季リーグ", year: "2026", term: "秋季", path: "/data/season-2026-fall.json" },
-  "2026-spring": { label: "2026年 春季リーグ", year: "2026", term: "春季", path: "/data/season-2026-spring.json" },
-  "2025-fall": { label: "2025年 秋季リーグ", year: "2025", term: "秋季", path: "/data/season-2025-fall.json" },
-};
+export type SeasonKey = `${number}-${'spring'|'fall'}`;

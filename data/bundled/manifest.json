@@ -1,0 +1,170 @@
+{
+  "format": "tohto-bundled-v1",
+  "blockBytes": 4194304,
+  "files": [
+    {
+      "name": "initial-data.json",
+      "bytes": 22701349,
+      "sha256": "0242ecb5bca320f79d2e49e962f464fcc8f0b96965999ac8770bc8b70bdf2ffe",
+      "parts": [
+        {
+          "key": "blocks/51b5829fc4084411d3b26c5aeb814db98ba9a82102a79c2a0ba0fd45cbad7d8c.gz",
+          "sha256": "51b5829fc4084411d3b26c5aeb814db98ba9a82102a79c2a0ba0fd45cbad7d8c",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/601b4c793c85828fd0e005b85da0dfb57a9d4bb7026a1f1521413e38fe785b48.gz",
+          "sha256": "601b4c793c85828fd0e005b85da0dfb57a9d4bb7026a1f1521413e38fe785b48",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/abba5989cc9213a9e9fd0bfdbde1a9de107ef44c5b0ce4e41af45bbc1268c712.gz",
+          "sha256": "abba5989cc9213a9e9fd0bfdbde1a9de107ef44c5b0ce4e41af45bbc1268c712",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/d6fb395cf483de5fd2f6c68dd84f2dd8dd85be525912d754631b73828e40a43e.gz",
+          "sha256": "d6fb395cf483de5fd2f6c68dd84f2dd8dd85be525912d754631b73828e40a43e",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/5276ef6dc831f03963cae54cdea3e3e39aae3ad0b559929ec57087cb8af61015.gz",
+          "sha256": "5276ef6dc831f03963cae54cdea3e3e39aae3ad0b559929ec57087cb8af61015",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/b4e90b37d1634cae14b4f62af5b5f1c9fd1a96d856a7c35592744d38cfbf98d8.gz",
+          "sha256": "b4e90b37d1634cae14b4f62af5b5f1c9fd1a96d856a7c35592744d38cfbf98d8",
+          "rawBytes": 1729829
+        }
+      ]
+    },
+    {
+      "name": "season-2025-fall.json",
+      "bytes": 15952253,
+      "sha256": "c8d2d2e78b9dd4d9dc5c1c196c6477e2c7317a873c0761de010c498aa06642fb",
+      "parts": [
+        {
+          "key": "blocks/de7084014052a34494850bf0370e737a6c59fa7a79f4229b65de9c8311284608.gz",
+          "sha256": "de7084014052a34494850bf0370e737a6c59fa7a79f4229b65de9c8311284608",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/2e9dc31618360bca92b037ac2d08387e23882419952ed86c3ed0d6b41f6e10a0.gz",
+          "sha256": "2e9dc31618360bca92b037ac2d08387e23882419952ed86c3ed0d6b41f6e10a0",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/65d01fae1fc4339726f24beead6b5c234f441a6ee3f8afdc15bd51a8b80880d2.gz",
+          "sha256": "65d01fae1fc4339726f24beead6b5c234f441a6ee3f8afdc15bd51a8b80880d2",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/f2c7a45641d3c33b53ff7bd25bb5144c7678175bb692c690189e44410f8406e3.gz",
+          "sha256": "f2c7a45641d3c33b53ff7bd25bb5144c7678175bb692c690189e44410f8406e3",
+          "rawBytes": 3369341
+        }
+      ]
+    },
+    {
+      "name": "season-2026-fall.json",
+      "bytes": 8703399,
+      "sha256": "fe7a370562c657373b07717538254f5b3235886db943925ca4aeeb2e9d0ea123",
+      "parts": [
+        {
+          "key": "blocks/5c4ec7d57a821f7d8e2843313633b15283d23fa2f7d234ec2f56e0f700afbc68.gz",
+          "sha256": "5c4ec7d57a821f7d8e2843313633b15283d23fa2f7d234ec2f56e0f700afbc68",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/19759e21dd1d2098a7a33ad610a6ba401a7595fac3e55cfe811a17957b5f173a.gz",
+          "sha256": "19759e21dd1d2098a7a33ad610a6ba401a7595fac3e55cfe811a17957b5f173a",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/b09f8375ad70fe9a5c10a1cb00839449ec4fa470d821cc101ba4b6ef4d71f882.gz",
+          "sha256": "b09f8375ad70fe9a5c10a1cb00839449ec4fa470d821cc101ba4b6ef4d71f882",
+          "rawBytes": 314791
+        }
+      ]
+    },
+    {
+      "name": "season-2026-spring.json",
+      "bytes": 22701355,
+      "sha256": "2070914c2e773003f6cc807224aab64b459fd03f9e0f642ffbefb40a245f5ce9",
+      "parts": [
+        {
+          "key": "blocks/79e99db8c44321cb8e9545744a43d917d6444ae9c6d0034c460f4a21cc0d74fd.gz",
+          "sha256": "79e99db8c44321cb8e9545744a43d917d6444ae9c6d0034c460f4a21cc0d74fd",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/213556c38c18145e42845674dbf43f1d1d350c3303ce47c20497728d251d93b9.gz",
+          "sha256": "213556c38c18145e42845674dbf43f1d1d350c3303ce47c20497728d251d93b9",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/95ec91c427ea6c5fff043d0f61b8a811054636ccc46df929942fceeda1394cda.gz",
+          "sha256": "95ec91c427ea6c5fff043d0f61b8a811054636ccc46df929942fceeda1394cda",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/03fb6a929ae589fd3aed7bbad35434e776b3417dd180bb1a77d8d88f5ae2c23e.gz",
+          "sha256": "03fb6a929ae589fd3aed7bbad35434e776b3417dd180bb1a77d8d88f5ae2c23e",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/ad879974684bc881255e01ced8a8a0a2aed47bfd2469ea72529459c47cca187c.gz",
+          "sha256": "ad879974684bc881255e01ced8a8a0a2aed47bfd2469ea72529459c47cca187c",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/ec824112c112d5dcee38ac281a940275a1929ec01874be1ed6a06c2b53271f9f.gz",
+          "sha256": "ec824112c112d5dcee38ac281a940275a1929ec01874be1ed6a06c2b53271f9f",
+          "rawBytes": 1729835
+        }
+      ]
+    },
+    {
+      "name": "spin-2025-fall.json",
+      "bytes": 3286037,
+      "sha256": "fe0fcde8b5a36cd3f8c7e2e0696a3e6ab7ba59c1c3451f0b7eea02eca0efebd6",
+      "parts": [
+        {
+          "key": "blocks/cd0ff2a87788053ac54e23b7f4d6ca66e1aafe2fef350415b791dbd1142a646f.gz",
+          "sha256": "cd0ff2a87788053ac54e23b7f4d6ca66e1aafe2fef350415b791dbd1142a646f",
+          "rawBytes": 3286037
+        }
+      ]
+    },
+    {
+      "name": "spin-2026-fall.json",
+      "bytes": 2145320,
+      "sha256": "4ca28e38febcd66e60c002b6fe784d0a2f77676e0da934bf62ad805c9270ea65",
+      "parts": [
+        {
+          "key": "blocks/7083962a924b5ce5e3bc6bf05159da111367dd106a21b8d8c9a193b83961943f.gz",
+          "sha256": "7083962a924b5ce5e3bc6bf05159da111367dd106a21b8d8c9a193b83961943f",
+          "rawBytes": 2145320
+        }
+      ]
+    },
+    {
+      "name": "spin-2026-spring.json",
+      "bytes": 4664355,
+      "sha256": "35b1f9f131a16f76aff0571e7b1c7c09f82767e128f026ce18dd40f852aec56c",
+      "parts": [
+        {
+          "key": "blocks/c59e5e24769ad7667d23dd841b879dd4afd60b59b04e4e52dd44e187408c1956.gz",
+          "sha256": "c59e5e24769ad7667d23dd841b879dd4afd60b59b04e4e52dd44e187408c1956",
+          "rawBytes": 4194304
+        },
+        {
+          "key": "blocks/076630c459a6e49cae9aca790dfaf79d75fa599bc4d034db67bcfb469a6914ff.gz",
+          "sha256": "076630c459a6e49cae9aca790dfaf79d75fa599bc4d034db67bcfb469a6914ff",
+          "rawBytes": 470051
+        }
+      ]
+    }
+  ]
+}

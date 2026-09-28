@@ -45,7 +45,7 @@ export async function syncAutumn(batch, { root = defaultRoot, checkOnly = false,
   const sourceFingerprint = sha256(JSON.stringify(nextFiles.map(f => [f.id, f.sha256])));
   const generatedAt = oldDataset?.metadata?.trackmanSync?.sourceFingerprint === sourceFingerprint
     ? oldDataset.metadata.generatedAt : new Date().toISOString();
-  const dataset = build(merged.csv, { title: '東都大学野球 2026年秋季リーグ戦', season: '2026年秋季', sourceName: '2026秋リーグ TrackMan CSV', generatedAt });
+  const dataset = build(merged.csv, { title: '東都大学野球 2026年秋季リーグ戦', season: '2026年秋季', sourceName: '2026秋リーグ TrackMan CSV', generatedAt, applyPlayerRules: true });
   if (dataset.pitches.length !== nextIds.size || dataset.games.length !== merged.games || dataset.pitches.some(p => p.year !== 2026 || p.season !== '秋')) throw new Error('集計後の件数またはシーズンが元CSVと一致しません。');
   const battingQuality = validateAutumnBatting(dataset, merged.rows);
   const spinRows = buildSpinDataset(dataset, merged.rows);

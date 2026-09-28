@@ -8,6 +8,20 @@
       "when": 1785747127395,
       "tag": "0000_modern_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790413376402,
+      "tag": "0001_broken_revanche",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790562000933,
+      "tag": "0002_wise_wrecking_crew",
+      "breakpoints": true
     }
   ]
 }

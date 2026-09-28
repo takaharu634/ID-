@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'tohto-savant-offline-v6';
+const CACHE_VERSION = 'tohto-savant-offline-v7';
 const APP_CACHE = `${CACHE_VERSION}-app`;
 // Keep existing offline datasets when refreshing the app name.
 const DATA_CACHE = 'tohto-savant-offline-v5-data';
@@ -43,7 +43,7 @@ self.addEventListener('message', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(DATA_CACHE);
     const keys = await cache.keys();
-    const seasons = ['2026-spring', '2025-fall'].filter(season => keys.some(key => new URL(key.url).pathname.endsWith(`/season-${season}.json`)));
+    const seasons = [...new Set(keys.map(key=>/\/season-([1-9]\d{3}-(?:spring|fall))\.json$/.exec(new URL(key.url).pathname)?.[1]).filter(Boolean))];
     event.source?.postMessage({ type: 'OFFLINE_STATUS', version: CACHE_VERSION, seasons });
   })());
 });
@@ -69,7 +69,13 @@ self.addEventListener('fetch', event => {
   if (url.pathname.startsWith('/data/') && url.pathname.endsWith('.json')) {
     const refresh = fetch(request).then(async response => {
       if (response.ok && response.headers.get('content-type')?.includes('json')) {
-        await (await caches.open(DATA_CACHE)).put(request, response.clone());
+        const cache=await caches.open(DATA_CACHE);
+        try {
+          await cache.put(request,response.clone());
+          const keys=await cache.keys();
+          // Bound device storage to the most recently stored twelve data files.
+          for(const key of keys.slice(0,Math.max(0,keys.length-12)))await cache.delete(key);
+        } catch { /* Device quota must never hide a valid network response. */ }
       }
       return response;
     }).catch(() => null);

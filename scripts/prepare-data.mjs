@@ -1,9 +1,13 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { packDataset } from '../lib/dataset-transport.js';
+import { restoreBundled, packBundled } from './bundled-data.mjs';
 
+await restoreBundled();
 await mkdir('public/data/compact', { recursive: true });
-for (const season of ['2026-fall', '2026-spring', '2025-fall']) {
+const seasons=(await readdir('public/data')).map(f=>/^season-([1-9]\d{3}-(?:spring|fall))\.json$/.exec(f)?.[1]).filter(Boolean).sort((a,b)=>Number(b.slice(0,4))-Number(a.slice(0,4)) || Number(b.endsWith('fall'))-Number(a.endsWith('fall')));
+await writeFile('lib/generated/seasons.json',JSON.stringify(seasons)+'\n');
+for (const season of seasons) {
   for (const kind of ['season', 'spin']) {
     const filename = `${kind}-${season}.json`;
     const source = await readFile(`public/data/${filename}`);
@@ -12,3 +16,4 @@ for (const season of ['2026-fall', '2026-spring', '2025-fall']) {
     console.log(`${filename}: ${source.length} → ${Buffer.byteLength(packed)} bytes; gzip ${gzipSync(source).length} → ${gzipSync(packed).length}`);
   }
 }
+await packBundled();

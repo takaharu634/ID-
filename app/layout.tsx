@@ -4,6 +4,7 @@ import "./report-print.css";
 import "./print-preview.css";
 import "./pitch-spin-profile.css";
 import "./batter-side-report.css";
+import "./readability.css";
 
 export const metadata: Metadata = {
   title: "ID東都 | TrackManデータ分析",
