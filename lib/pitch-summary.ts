@@ -1,4 +1,5 @@
 import { maxValue } from './extrema.mjs';
+import { summarizePitchExtrema } from './pitch-extrema.ts';
 import type { Row } from "./dataset-types";
 
 // Missing measurements do not contribute zero to an average.
@@ -19,9 +20,9 @@ export function summarizeByPitchType(pitches: Row[], role: "pitcher" | "batter")
     const hits = rows.filter((row) => ["単打", "二塁打", "三塁打", "本塁打"].includes(row.playResult)).length;
     return { pitchType, pitches: rows.length, usageRate: pitches.length ? rows.length / pitches.length : null, avgVelocity: meanOf(rows, "velocity"), maxVelocity: maxValue(rows.map((row) => row.velocity).filter(Number.isFinite), 0) || null,
       avgSpin: meanOf(rows, "spin"), avgIvb: meanOf(rows, "ivb"), avgHb: meanOf(rows, "hb"), avgVaa: meanOf(rows, "vaa"), avgExtension: meanOf(rows, "extension"),
+      ...summarizePitchExtrema(rows),
       whiffRate: swings ? whiffs / swings : null, swingingStrikeRate: rows.length ? whiffs / rows.length : null, cswRate: rows.length ? csw / rows.length : null, avgExitVelocity: meanOf(contacts, "exitVelocity"),
       hardHitRate: contacts.length ? hard / contacts.length : null, battingAverage: contacts.length ? hits / contacts.length : null,
       sampleNote: rows.length < (role === "pitcher" ? 20 : 12) ? "サンプル不足" : "" };
   }).sort((a, b) => b.pitches - a.pitches);
 }
-

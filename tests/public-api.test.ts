@@ -52,6 +52,23 @@ test("鈴木泰成の球種別平均を読み取り専用JSONで返す", async (
   const fastball = body.arsenal.find((row: any) => row.pitchType === "ストレート");
   assert.deepEqual({ velocity: fastball.avgVelocity, ivb: fastball.avgIvb, hb: fastball.avgHb }, { velocity: 149.3, ivb: 45.5, hb: 37.1 });
   assert.equal(body.units.avgIvb, "cm");
+  const original = JSON.parse(dataset);
+  const pitches = original.pitches.filter((pitch: any) => pitch.pitcherId === body.player.id && pitch.pitchType === 'ストレート');
+  assert.ok(pitches.length > 0);
+  assert.equal(fastball.maxIvb, pitches.map((pitch: any) => pitch.ivb).filter(Number.isFinite).sort((a: number, b: number) => Math.abs(b) - Math.abs(a) || b - a)[0]);
+  assert.equal(fastball.maxVaa, Math.max(...pitches.map((pitch: any) => pitch.vaa).filter(Number.isFinite)));
+  assert.equal(body.units.maxHb, 'cm');
+  assert.equal(body.units.maxVaa, 'degrees');
+});
+
+test('最大横変化ランキングは符号を残して絶対値順に並ぶ', async () => {
+  const response = await getRankings(new Request('https://example.test/api/public/rankings/pitchers?metric=maxHb&minPitches=20&limit=100'));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.ok(body.rankings.some((row: any) => row.value < 0));
+  for (let index = 1; index < body.rankings.length; index++) {
+    assert.ok(Math.abs(body.rankings[index - 1].value) >= Math.abs(body.rankings[index].value));
+  }
 });
 
 test("大学・球種・最低球数を指定したIVBランキングを降順で返す", async () => {

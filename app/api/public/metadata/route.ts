@@ -15,8 +15,11 @@ export async function GET(request: Request) {
       batters: dataset.metadata?.batters,
     },
     pitchTypeNormalization: dataset.metadata?.pitchTypeNormalization ?? null,
-    units: { avgVelocity: "km/h", maxVelocity: "km/h", avgIvb: "cm", avgHb: "cm", avgSpin: "rpm", avgVaa: "degrees", avgExtension: "cm", rates: "0-1" },
+    units: { avgVelocity: "km/h", maxVelocity: "km/h", avgIvb: "cm", maxIvb: "cm", avgHb: "cm", maxHb: "cm", avgSpin: "rpm", avgVaa: "degrees", maxVaa: "degrees", avgExtension: "cm", rates: "0-1" },
     definitions: {
+      maxIvb: "球種別の縦変化量の絶対値が最大の1球。cm単位で元の符号を保持し、並び順は絶対値。",
+      maxHb: "球種別の横変化量の絶対値が最大の1球。cm単位で投手視点の符号を保持し、並び順は絶対値。",
+      maxVaa: "球種別の進入角の数値上の最大。−6°と−4°なら−4°。未計測値は除外。",
       avgIvb: "Induced Vertical Breakの球種別平均。重力による落下を除いた縦変化量。",
       avgHb: "投手視点を基準とする横変化量の球種別平均。符号と投手左右を併せて解釈します。",
       whiffRate: "スイングした投球のうち空振りになった割合。",

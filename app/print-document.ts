@@ -75,6 +75,17 @@ body.print-document .approach-heatmap footer { flex-wrap:wrap; justify-content:c
 
 /** Pitching reports use the full portrait height; batter reports retain their layout. */
 export function getPrintLayout(kind: string) {
+  if (kind === 'opponent') return { label: '縦・横', width: 283, height: 282, css: PRINT_DOCUMENT_CSS + `
+@page opponent-portrait { size:A4 portrait; margin:7mm; }
+@page opponent-landscape { size:A4 landscape; margin:7mm; }
+.print-document-page[data-orientation="portrait"] { width:196mm; height:282mm; page:opponent-portrait; }
+.print-document-page[data-orientation="portrait"] .print-document-content { width:196mm; height:276mm; }
+.print-document-page[data-orientation="landscape"] { width:283mm; height:195mm; page:opponent-landscape; }
+body.print-document .opponent-print-source { display:block!important; }
+body.print-document .opponent-print-page { break-before:auto!important; break-after:auto!important; page:auto!important; }
+@media screen { .print-document-page { margin-left:auto; margin-right:auto; } }
+@media print { html, body.print-document { width:auto!important; } }
+` };
   if (kind !== 'count' && kind !== 'side') return { label: '横', width: 283, height: 195, css: PRINT_DOCUMENT_CSS };
   return { label: '縦', width: 196, height: 282, css: PRINT_DOCUMENT_CSS + `
 @page { size:A4 portrait; margin:7mm; }

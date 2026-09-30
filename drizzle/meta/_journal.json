@@ -22,6 +22,13 @@
       "when": 1790562000933,
       "tag": "0002_wise_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790664120316,
+      "tag": "0003_elite_spirit",
+      "breakpoints": true
     }
   ]
 }

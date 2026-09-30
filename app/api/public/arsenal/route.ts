@@ -1,8 +1,9 @@
+import { withPitchTypeExtrema } from "../../../../lib/pitch-extrema.ts";
 import { apiError, canonicalTeam, datasetInfo, findPlayers, jsonHeaders, loadPublicDataset, numberParam, publicPlayer } from "../_lib.ts";
 
 export const runtime = "edge";
 
-const arsenalFields = ["pitchType", "pitches", "usageRate", "avgVelocity", "maxVelocity", "avgSpin", "avgIvb", "avgHb", "avgVaa", "avgExtension", "whiffRate", "cswRate", "hardHitRateAllowed", "pitchValuePer100", "stuffPlus", "locationPlus", "pitchingPlus"];
+const arsenalFields = ["pitchType", "pitches", "usageRate", "avgVelocity", "maxVelocity", "avgSpin", "avgIvb", "maxIvb", "avgHb", "maxHb", "avgVaa", "maxVaa", "avgExtension", "whiffRate", "cswRate", "hardHitRateAllowed", "pitchValuePer100", "stuffPlus", "locationPlus", "pitchingPlus"];
 
 export async function GET(request: Request) {
   const dataset = await loadPublicDataset(request);
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
   }, { status: 409, headers: jsonHeaders });
   const player = matches[0];
   const minPitches = numberParam(params.get("minPitches"), 1, 1, 10000);
-  const pitches = (dataset.pitchTypes ?? [])
+  const pitches = withPitchTypeExtrema(dataset.pitchTypes ?? [], dataset.pitches ?? [])
     .filter((row) => row.pitcherId === player.id && Number(row.pitches) >= minPitches)
     .sort((a, b) => Number(b.pitches) - Number(a.pitches))
     .map((row) => Object.fromEntries(arsenalFields.map((field) => [field, row[field]])));
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
     dataset: datasetInfo(dataset),
     player: publicPlayer(player),
     query: { team: canonicalTeam(params.get("team")), minPitches },
-    units: { avgVelocity: "km/h", maxVelocity: "km/h", avgIvb: "cm", avgHb: "cm", avgSpin: "rpm", avgVaa: "degrees", avgExtension: "cm", rates: "0-1" },
+    units: { avgVelocity: "km/h", maxVelocity: "km/h", avgIvb: "cm", maxIvb: "cm", avgHb: "cm", maxHb: "cm", avgSpin: "rpm", avgVaa: "degrees", maxVaa: "degrees", avgExtension: "cm", rates: "0-1" },
     arsenal: pitches,
   }, { headers: jsonHeaders });
 }

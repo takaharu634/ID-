@@ -22,18 +22,22 @@ import GameScoreboard from "./game-scoreboard";
 import PitcherGameLog from "./pitcher-game-log";
 import PitchComponentComparison from "./pitch-component-comparison";
 import { summarizeByPitchType } from "../lib/pitch-summary";
+import { withPitchTypeExtrema, pitchExtremaSortValue } from "../lib/pitch-extrema";
 import { pitcherStrikeoutRows, pitchStrikeoutRows } from "../lib/strikeout-rankings";
 import { PitcherDevelopment, BatterDevelopment, CatcherDevelopment, developmentOptions, developmentBoardConfig, DEVELOPMENT_MIN_LABELS, DevelopmentDefinition } from "./player-development";
 import QabPanel, { QabDefinition } from "./qab-panel";
 import { qabAppearances, qabRankingRows } from "../lib/qab";
 import BatterSideReport from './batter-side-report';
+import OpponentReport, { BatterDirectionReport } from './opponent-report';
+import { insideFastballCount } from '../lib/opponent-report';
 import { isReportHit } from '../lib/batter-side-report';
 const UmpireAnalysis = lazy(() => import("./umpire-analysis"));
 const PitchSpinProfile = lazy(() => import("./pitch-spin-profile"));
-const BarrelZoneView = lazy(() => import("./barrel-zone"));
+const PitchTrajectoryView = lazy(() => import("./pitch-trajectory"));
 import { playUiSound } from "./ui-sound";
 import { measuredNumber, meanOf, sdOf } from "../lib/numeric-summary";
 import { useViewState } from "../lib/view-state";
+import { usageFeature } from "../lib/feature-usage";
 import { matchesRunnerState, RUNNER_STATE_OPTIONS } from "../lib/runner-state";
 import {
   annotatePlateAppearances,
@@ -61,7 +65,7 @@ import {
   type Rating,
 } from "../lib/batter-profile";
 
-type ViewName = "umpires" | "home" | "games" | "search" | "visuals" | "barrel" | "compare" | "stats" | "leaders" | "quality" | "player" | "spin" | "shift" | "news" | "glossary";
+type ViewName = "umpires" | "home" | "games" | "search" | "visuals" | "trajectory" | "compare" | "stats" | "leaders" | "quality" | "player" | "spin" | "shift" | "news" | "glossary";
 type RouteState = { view: ViewName; playerId?: string; board?: string };
 type NewsItem = {
   id: string; team: string; playerKanji?: string; playerRoman?: string; playerId?: string;
@@ -70,6 +74,8 @@ type NewsItem = {
   isFeatured?: boolean; tags?: string[];
 };
 type Column = { key: string; label: string; format?: "number" | "decimal" | "rate" | "plus" | "time" | "seconds" | "innings"; player?: boolean };
+const MOVEMENT_COLUMNS: Column[] = [{ key: "avgIvb", label: "平均縦変化量" }, { key: "maxIvb", label: "最大縦変化量" }, { key: "avgHb", label: "平均横変化量" }, { key: "maxHb", label: "最大横変化量" }, { key: "avgVaa", label: "平均進入角" }, { key: "maxVaa", label: "最大進入角" }];
+
 type Benchmark = {
   average: number;
   excellent: number | null;
@@ -189,10 +195,11 @@ const NAV_SECTIONS = [
 function readRoute(): RouteState {
   if (typeof window === "undefined") return { view: "home" };
   const params = new URLSearchParams(window.location.search);
-  const view = (params.get("表示") ?? "home") as ViewName;
+  const requestedView = params.get("表示") ?? "home";
+  const view = (requestedView === "barrel" ? "trajectory" : requestedView) as ViewName;
   const requestedBoard = params.get("指標") ?? undefined;
   return {
-    view: ["umpires", "home", "games", "search", "visuals", "barrel", "compare", "stats", "leaders", "quality", "player", "spin", "shift", "news", "glossary"].includes(view) ? view : "home",
+    view: ["umpires", "home", "games", "search", "visuals", "trajectory", "compare", "stats", "leaders", "quality", "player", "spin", "shift", "news", "glossary"].includes(view) ? view : "home",
     playerId: params.get("選手") ?? undefined,
     board: requestedBoard === "catching_throwing" ? "catching_pop" : requestedBoard === "pitching_tempo" ? "pitching_strikeouts" : requestedBoard,
   };
@@ -370,6 +377,22 @@ export default function SavantApp() {
   const currentDisplay = useRef({data,season});
   currentDisplay.current={data,season};
   const observedRevision = useRef('');
+  const pendingUsage = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!data) return;
+    const feature = usageFeature(route.view, route.board);
+    if (!feature) return;
+    const day = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const key = `tohto-feature-v1:${day}:${feature}`;
+    if (pendingUsage.current.has(key)) return;
+    try { if (window.sessionStorage.getItem(key)) return; } catch { /* Storage is optional. */ }
+    pendingUsage.current.add(key);
+    void fetch('/api/usage', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ feature }), keepalive: true })
+      .then((response) => { if (response.ok) { try { window.sessionStorage.setItem(key, '1'); } catch { /* Optional. */ } } })
+      .catch(() => { /* Usage measurement never blocks the site. */ })
+      .finally(() => pendingUsage.current.delete(key));
+  }, [data, route.view, route.board]);
 
   async function retryDataset() {
     const fresh = await refreshSeasonCatalog().catch(() => catalogRef.current);
@@ -489,7 +512,7 @@ export default function SavantApp() {
 
   return (
     <MetricBenchmarkContext.Provider value={allBenchmarks}>
-    <div className="site-shell" onClickCapture={(event) => {
+    <div className={`site-shell${route.view === "trajectory" ? " trajectory-shell" : ""}`} onClickCapture={(event) => {
       const target = event.target as HTMLElement;
       if (target.closest(".metric-term")) playUiSound("pop", muted);
       else if (target.closest(".player-link,.team-strip button")) playUiSound("slide", muted);
@@ -512,16 +535,16 @@ export default function SavantApp() {
         onSeason={(value) => { navigate(route, value); loadDataset(value); }}
       />
       {(loadingSeason || loadError || publicDataNotice) && <div className="dataset-status" role="status" aria-live="polite">{loadingSeason ? `${seasonInfo(loadingSeason).label}を読み込んでいます。現在の表示は${seasonInfo(season).label}です。` : <>{loadError || publicDataNotice?.message}<button type="button" onClick={() => void retryDataset()}>再読み込み</button></>}</div>}
-      <TeamStrip teams={data.teams} season={season} onTeam={() => navigate({ view: "stats" })} />
+      {route.view !== "trajectory" && <TeamStrip teams={data.teams} season={season} onTeam={() => navigate({ view: "stats" })} />}
       {menuOpen && <MenuOverlay close={() => setMenuOpen(false)} navigate={navigate} data={data} />}
 
-      <main className="page-wrap"><Suspense fallback={<div className="loading-panel" role="status">分析画面を準備しています…</div>}>
+      <main className={`page-wrap${route.view === "trajectory" ? " trajectory-wrap" : ""}`}><Suspense fallback={<div className="loading-panel" role="status">分析画面を準備しています…</div>}>
         {route.view === "home" && <HomeView data={data} navigate={navigate} />}
         {route.view === "umpires" && <UmpireAnalysis key={season} data={data} />}
         {route.view === "games" && <GamesView data={data} />}
         {route.view === "search" && <SearchView key={season} data={data} navigate={navigate} />}
         {route.view === "visuals" && <VisualsView key={`${season}:${route.board ?? ""}`} data={data} navigate={navigate} />}
-        {route.view === "barrel" && <BarrelZoneView key={season} initialSeason={season} initialData={data} />}
+        {route.view === "trajectory" && <PitchTrajectoryView key={season} season={season} pitchCount={data.pitches.length} />}
         {route.view === "compare" && <CompareView key={`${season}:${route.playerId ?? ""}`} data={data} navigate={navigate} initialPlayerId={route.playerId} />}
         {route.view === "stats" && <StatsView data={data} navigate={navigate} />}
         {route.view === "leaders" && <LeaderboardsView key={`${season}:${route.board ?? ""}`} data={data} board={route.board ?? "pitching_percentile"} navigate={navigate} />}
@@ -534,7 +557,7 @@ export default function SavantApp() {
         {route.view === "glossary" && <GlossaryView />}
       </Suspense></main>
 
-      <Footer navigate={navigate} />
+      {route.view !== "trajectory" && <Footer navigate={navigate} />}
     </div>
     </MetricBenchmarkContext.Provider>
   );
@@ -587,7 +610,7 @@ function Header({ searchText, setSearchText, suggestions, onPlayer, navigate, on
         <button onClick={() => navigate({ view: "stats" })}>リーグ統計</button>
         <button onClick={() => navigate({ view: "quality" })}>PITCHスコア</button>
         <button onClick={() => navigate({ view: "spin" })}>回転</button>
-        <button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button>
+        <button onClick={() => navigate({ view: "trajectory" })}>投球軌道</button>
         <button onClick={() => navigate({ view: "umpires" })}>審判分析</button>
         <button onClick={() => navigate({ view: "shift" })}>SHIFT</button>
         <button onClick={() => navigate({ view: "news" })}>NEWS</button>
@@ -628,7 +651,7 @@ function MenuOverlay({ close, navigate, data }: { close: () => void; navigate: (
           <button onClick={() => navigate({ view: "stats" })}>リーグ統計 <small>{data.metadata.season}</small></button>
           <button onClick={() => navigate({ view: "quality" })}>PITCHスコア</button>
           <button onClick={() => navigate({ view: "spin" })}>回転</button>
-          <button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button>
+          <button onClick={() => navigate({ view: "trajectory" })}>投球軌道</button>
         <button onClick={() => navigate({ view: "umpires" })}>審判分析</button>
         <button onClick={() => navigate({ view: "shift" })}>SHIFT / 守備配置</button>
           <button onClick={() => navigate({ view: "news" })}>NEWS / TRAINING WATCH</button>
@@ -781,7 +804,7 @@ function GamesView({ data }: { data: Dataset }) {
 
 function SearchView({ data, navigate }: { data: Dataset; navigate: (route: RouteState) => void }) {
   const remembered = useViewState(`search|${data.metadata.season}`, {
-    analysisMode: "list" as "list" | "games" | "sides" | "pitchTypes" | "counts" | "approach" | "batterSides",
+    analysisMode: "list" as "list" | "games" | "sides" | "pitchTypes" | "counts" | "approach" | "batterSides" | "batterDirections",
     pitcher: "", batter: "", catcher: "", team: "", pitchType: "", batterSide: "", pitcherThrows: "", pitchResult: "", playResult: "", hitType: "", course: "", year: "", season: "", opponent: "", count: "", outs: "", runnerState: "", inning: "", half: "", fromDate: "", toDate: "", gameId: "",
     minimumSample: DEFAULT_MINIMUM_SAMPLE, ranges: {} as Record<string, string>, showAdvanced: false, page: 0,
   });
@@ -892,6 +915,7 @@ function SearchView({ data, navigate }: { data: Dataset; navigate: (route: Route
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "ID東都_検索結果.csv"; anchor.click(); URL.revokeObjectURL(url);
   }
 
+  const opponentReportLabel = [data.metadata.season,fromDate||toDate?`${fromDate||"開始指定なし"}〜${toDate||"終了指定なし"}`:"全期間",opponent&&`対戦:${opponent}`,pitcher&&`投手:${data.pitchers.find(p=>p.id===pitcher)?.kanji||pitcher}`,batter&&`打者:${data.batters.find(p=>p.id===batter)?.kanji||batter}`,catcher&&`捕手:${data.catchers.find(p=>p.id===catcher)?.kanji||catcher}`,year,season,pitchType,batterSide&&`${batterSide}打者`,pitcherThrows&&`${pitcherThrows}投手`,count&&`${count}カウント`,pitchResult,playResult,hitType,course,outs&&`${outs}アウト`,runnerState&&runnerStateLabel,inning&&`${inning}回`,half,gameId&&`試合:${data.games.find(g=>g.id===gameId)?.date||gameId}`, ...Object.entries(ranges).filter(([,v])=>v).map(([k,v])=>`${({velocity:'球速',spin:'回転数',ivb:'縦変化',hb:'横変化',plateX:'横位置',plateZ:'高さ',exitVelocity:'打球速度',launchAngle:'打球角度',releaseHeight:'リリース高',releaseSide:'リリース横'} as Record<string,string>)[k.replace(/Min|Max/,'')]||k}${k.endsWith('Min')?'下限':'上限'}:${v}`)].filter(Boolean).join('・');
   return (
     <PageSection eyebrow="カスタム検索" title="投球・打球検索" description="選手・試合条件に加え、球質・コース・打球品質の範囲を指定してTrackManの1球単位データを検索できます。">
       <div className="filter-panel search-filters">
@@ -933,6 +957,12 @@ function SearchView({ data, navigate }: { data: Dataset; navigate: (route: Route
         <label>打球タイプ<select value={hitType} onChange={(event) => setHitType(event.target.value)}><option value="">すべて</option><option value="GroundBall">ゴロ</option><option value="LineDrive">ライナー</option><option value="FlyBall">フライ</option></select></label>
       </div></section>}
       <div className="result-head"><div><strong>{filtered.length.toLocaleString("ja-JP")}</strong>球<span>・現在の検索条件を全分析に適用</span></div><button className="secondary-button" onClick={downloadCsv}>検索結果をCSV保存</button></div>
+      {team && <OpponentReport key={team} team={team} pitches={filtered}
+        label={opponentReportLabel}
+        countMatrix={(rows)=><CountAnalysisMatrix pitches={rows} minimumSample={minimumSample}/>}
+        locationPlot={(rows,scaleRows)=><SearchPitchLocationPlot pitches={rows} scalePitches={scaleRows} compact showLegend={false} batterReport/>}
+        legend={<div className="search-outcome-legend">{[['空振り',SEARCH_RESULT_COLORS.whiff],['見逃し',SEARCH_RESULT_COLORS.called],['ファウル',SEARCH_RESULT_COLORS.foul],['凡打',SEARCH_RESULT_COLORS.out],['ボール',SEARCH_RESULT_COLORS.ball],['安打',SEARCH_RESULT_COLORS.hit],['本塁打',SEARCH_RESULT_COLORS.homeRun]].map(([name,color])=><span key={name}><i style={{background:color}}/>{name}</span>)}</div>}
+        pitchColors={PITCH_COLORS}/>}
       <nav className="search-analysis-tabs" aria-label="検索結果の分析方法">
         {[
           ["list", "一球一覧", "1球単位"],
@@ -941,6 +971,7 @@ function SearchView({ data, navigate }: { data: Dataset; navigate: (route: Route
           ["pitchTypes", "左右×球種", "球種別投球位置"],
           ["counts", "カウント別", "配球マトリクス"],
           ["batterSides", "左右別打者分析", "対右投手／対左投手"],
+          ["batterDirections", "左右別打球方向", "ストレート／変化球"],
           ["approach", "打者カード", "振る条件・Chase"],
         ].map(([value, label, detail]) => <button type="button" key={value} className={analysisMode === value ? "active" : ""} onClick={() => setAnalysisMode(value as typeof analysisMode)}><strong>{label}</strong><small>{detail}</small></button>)}
       </nav>
@@ -959,8 +990,9 @@ function SearchView({ data, navigate }: { data: Dataset; navigate: (route: Route
         batterSide: batterSide ? `${batterSide}打者・${runnerStateLabel}` : `左右比較・${runnerStateLabel}`, pitchType: pitchType || "全球種", minimumSample: `n=${minimumSample}`,
       }} />}
       {analysisMode === "pitchTypes" && <SearchPitchTypeAnalysis pitches={filtered} />}
+      {analysisMode === "batterDirections" && <BatterDirectionReport pitches={filtered.filter(row=>!team||row.batterTeam===team)} label={opponentReportLabel}/>}
       {analysisMode === "batterSides" && <BatterSideReport pitchColors={PITCH_COLORS} pitches={filtered.filter(row=>!team||row.batterTeam===team)} label={[data.metadata.season, fromDate||toDate ? `${fromDate||'開始指定なし'}〜${toDate||'終了指定なし'}` : '全期間', pitcher ? `投手:${data.pitchers.find(p=>p.id===pitcher)?.kanji||pitcher}` : '全対戦投手', catcher ? `捕手:${data.catchers.find(p=>p.id===catcher)?.kanji||catcher}` : '全対戦捕手', opponent, pitchType, count&&`${count}カウント`, pitcherThrows&&`${pitcherThrows}投手`,pitchResult,playResult,hitType,course,outs&&`${outs}アウト`,runnerState&&runnerStateLabel,inning&&`${inning}回`,half,gameId&&`試合:${data.games.find(g=>g.id===gameId)?.date||gameId}`, ...Object.entries(ranges).filter(([,v])=>v).map(([k,v])=>`${({velocity:'球速',spin:'回転数',ivb:'縦変化',hb:'横変化',plateX:'横位置',plateZ:'高さ',exitVelocity:'打球速度',launchAngle:'打球角度',releaseHeight:'リリース高',releaseSide:'リリース横'} as Record<string,string>)[k.replace(/Min|Max/,'')]||k}${k.endsWith('Min')?'下限':'上限'}:${v}`)].filter(Boolean).join('・')} locationPlot={(rows,scaleRows)=><SearchPitchLocationPlot pitches={rows} scalePitches={scaleRows} compact showLegend={false} batterReport/>} legend={<div className="search-outcome-legend">{[['空振り',SEARCH_RESULT_COLORS.whiff],['見逃し',SEARCH_RESULT_COLORS.called],['ファウル',SEARCH_RESULT_COLORS.foul],['凡打',SEARCH_RESULT_COLORS.out],['ボール',SEARCH_RESULT_COLORS.ball],['安打',SEARCH_RESULT_COLORS.hit],['本塁打',SEARCH_RESULT_COLORS.homeRun]].map(([name,color])=><span key={name}><i style={{background:color}}/>{name}</span>)}</div>}/>}
-      {analysisMode === "counts" && <SearchCountAnalysis pitches={pitcherReportPitches} pitcher={data.pitchers.find((row) => row.id === pitcher)} minimumSample={minimumSample} filters={{
+      {analysisMode === "counts" && <SearchCountAnalysis pitches={pitcherReportPitches} pitcher={data.pitchers.find((row) => row.id === pitcher)} minimumSample={minimumSample} runnerState={runnerState} onRunnerStateChange={setRunnerState} filters={{
         team,
         pitcher,
         season: [year, season].filter(Boolean).join("年") || data.metadata.season,
@@ -1159,10 +1191,10 @@ function CountPrintHeading({ pitcherName, filters, printedAt, sample, pitches = 
 function CountAnalysisMatrix({ pitches, minimumSample = DEFAULT_MINIMUM_SAMPLE }: { pitches: Row[]; minimumSample?: number }) {
   const counts=COUNT_ANALYSIS_COUNTS;const types=[...new Set(pitches.map((row)=>row.pitchType))].sort((a,b)=>pitches.filter((row)=>row.pitchType===b).length-pitches.filter((row)=>row.pitchType===a).length);const countTotals=new Map(counts.map((count)=>[count,pitches.filter((row)=>`${row.balls}-${row.strikes}`===count).length]));
   const countMaxima=new Map(counts.map((count)=>[count,Math.max(0,...types.map((type)=>pitches.filter((row)=>row.pitchType===type&&`${row.balls}-${row.strikes}`===count).length))]));
-  return <><div className="table-scroll count-print-matrix"><table className="count-matrix"><thead><tr><th>球種</th>{counts.map((count)=><th key={count}>{count}<span className="count-low-sample"><small>n={countTotals.get(count)}</small>{(countTotals.get(count)||0)>0&&(countTotals.get(count)||0)<minimumSample&&<small>参考値</small>}</span></th>)}<th>合計</th></tr></thead><tbody>{types.map((type)=>{const typeRows=pitches.filter((row)=>row.pitchType===type);return <tr key={type}><th>{type}</th>{counts.map((count)=>{const rows=typeRows.filter((row)=>`${row.balls}-${row.strikes}`===count);const balls=rows.filter(isBallResult).length;const total=countTotals.get(count)||0;const percentage=rows.length/Math.max(1,total)*100;const intensity=percentage>=90?" tendency-90":percentage>=80?" tendency-80":rows.length>0&&rows.length===countMaxima.get(count)?" tendency-max":"";return <td key={count} className={`${rows.length?"has-data":""}${intensity}${total>0&&total<minimumSample?" low-sample":""}`}><strong>{rows.length||"—"}</strong>{rows.length>0&&<><em>{percentage.toFixed(0)}%</em><small>B:{balls} S:{rows.length-balls}</small></>}</td>})}<td className="total"><strong>{typeRows.length}</strong><em>{(typeRows.length/Math.max(1,pitches.length)*100).toFixed(0)}%</em><small>B:{typeRows.filter(isBallResult).length} S:{typeRows.length-typeRows.filter(isBallResult).length}</small></td></tr>})}<tr className="count-total-row"><th>合計</th>{counts.map((count)=>{const rows=pitches.filter((row)=>`${row.balls}-${row.strikes}`===count);return <td key={count}><strong>{rows.length}</strong><small>B:{rows.filter(isBallResult).length} S:{rows.length-rows.filter(isBallResult).length}</small></td>})}<td><strong>{pitches.length}</strong></td></tr></tbody></table></div><div className="count-print-key"><span><i className="tendency-max"/>カウント内最多</span><span><i className="tendency-80"/>80%以上</span><span><i className="tendency-90"/>90%以上</span><span>参考値・斜線：同カウント{minimumSample}球未満</span></div></>;
+  return <><div className="table-scroll count-print-matrix"><table className="count-matrix"><thead><tr><th>球種</th>{counts.map((count)=><th key={count}>{count}<span className="count-low-sample"><small>n={countTotals.get(count)}</small>{(countTotals.get(count)||0)>0&&(countTotals.get(count)||0)<minimumSample&&<small>参考値</small>}</span></th>)}<th>合計</th></tr></thead><tbody>{types.map((type)=>{const typeRows=pitches.filter((row)=>row.pitchType===type);return <tr key={type}><th>{type}</th>{counts.map((count)=>{const rows=typeRows.filter((row)=>`${row.balls}-${row.strikes}`===count);const balls=rows.filter(isBallResult).length;const total=countTotals.get(count)||0;const percentage=rows.length/Math.max(1,total)*100;const intensity=percentage>=90?" tendency-90":percentage>=80?" tendency-80":rows.length>0&&rows.length===countMaxima.get(count)?" tendency-max":"";return <td key={count} className={`${rows.length?"has-data":""}${intensity}${total>0&&total<minimumSample?" low-sample":""}`}><strong>{rows.length||"—"}</strong>{rows.length>0&&<><em>{percentage.toFixed(0)}%</em><small>B:{balls} S:{rows.length-balls}</small></>}</td>})}<td className="total"><strong>{typeRows.length}</strong><em>{(typeRows.length/Math.max(1,pitches.length)*100).toFixed(0)}%</em><small>B:{typeRows.filter(isBallResult).length} S:{typeRows.length-typeRows.filter(isBallResult).length}</small></td></tr>})}<tr className="count-inside-row"><th title="ストレートのうち内角側1/3と、その外側のボール球。割合の分母は同カウントの全球数。">うち内角<br/>ストレート</th>{[...counts, "合計"].map(count=>{const rows=count==="合計"?pitches:pitches.filter(row=>`${row.balls}-${row.strikes}`===count);const stat=insideFastballCount(rows);return <td key={count} title={`内角ストレート ${stat.n} / 全球数 ${stat.total}・内角判定不能 ${stat.missing}球`}><strong>{stat.total?`${(stat.n/stat.total*100).toFixed(0)}%`:"—"}</strong><small>{stat.n}／{stat.total}球</small></td>})}</tr><tr className="count-total-row"><th>合計</th>{counts.map((count)=>{const rows=pitches.filter((row)=>`${row.balls}-${row.strikes}`===count);return <td key={count}><strong>{rows.length}</strong><small>B:{rows.filter(isBallResult).length} S:{rows.length-rows.filter(isBallResult).length}</small></td>})}<td><strong>{pitches.length}</strong></td></tr></tbody></table></div><div className="count-print-key"><span><i className="tendency-max"/>カウント内最多</span><span><i className="tendency-80"/>80%以上</span><span><i className="tendency-90"/>90%以上</span><span>参考値・斜線：同カウント{minimumSample}球未満</span></div></>;
 }
 
-function SearchCountAnalysis({ pitches, pitcher, filters, minimumSample }: { pitches: Row[]; pitcher?: Row; filters: Record<string, string>; minimumSample: number }) {
+function SearchCountAnalysis({ pitches, pitcher, filters, minimumSample, runnerState = "", onRunnerStateChange }: { pitches: Row[]; pitcher?: Row; filters: Record<string, string>; minimumSample: number; runnerState?: string; onRunnerStateChange?: (value: string) => void }) {
   const pitcherName=pitcher?.kanji||pitcher?.name||([...new Set(pitches.map((row)=>row.pitcherKanji||row.pitcher))].length===1?(pitches[0]?.pitcherKanji||pitches[0]?.pitcher):"全投手");
   const printedAt=new Intl.DateTimeFormat("ja-JP",{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Tokyo"}).format(new Date());
   const displayFilters={...filters,team:filters.team||pitcher?.team||"全大学"};
@@ -1187,7 +1219,11 @@ function SearchCountAnalysis({ pitches, pitcher, filters, minimumSample }: { pit
     if (mode === "team" && !selectedPitchers.length) return;
     void printReport(".count-print-root", "count", mode);
   }
-  return <section className="search-analysis-workspace count-print-root"><div className="count-single-print-content"><CountPrintHeading pitcherName={pitcherName} filters={displayFilters} printedAt={printedAt} sample={pitches.length} pitches={pitches}/><header><div><span>COUNT ANALYSIS</span><h2>カウント別投球分析</h2><p>球種ごとの球数・割合・ボール／ストライクをカウント別に比較します。印刷はA4縦。投手ごとに改ページします。</p></div><div className="count-print-actions">{teamPitchers.length>0&&<details className="count-player-selection"><summary>印刷する選手を選択（{selectedPitchers.length}人）</summary><fieldset><legend>{filters.team}</legend><div className="count-selection-actions"><button type="button" className="secondary-button" onClick={()=>setPrintSelection({team:filters.team,ids:teamPitchers.map(row=>row.id)})}>全選択</button><button type="button" className="secondary-button" onClick={()=>setPrintSelection({team:filters.team,ids:[]})}>選択解除</button></div><div className="count-player-options">{teamPitchers.map(row=><label key={row.id}><input type="checkbox" checked={selectedIds.includes(row.id)} onChange={()=>togglePrintPitcher(row.id)}/><span>{row.name}</span></label>)}</div><button type="button" className="secondary-button count-print-button count-team-print-button" disabled={!selectedPitchers.length} onClick={()=>print("team")}>選択した選手を印刷（{selectedPitchers.length}人）</button></fieldset></details>}<button type="button" className="secondary-button count-print-button" disabled={!pitches.length} onClick={()=>print("single")}>現在の資料を印刷</button></div></header><CountAnalysisMatrix pitches={pitches} minimumSample={minimumSample}/><div className="count-plot-grid">{COUNT_ANALYSIS_COUNTS.map((count)=>{const rows=pitches.filter((row)=>`${row.balls}-${row.strikes}`===count);const swings=rows.filter(isScoutingSwing).length;return <article key={count}><header><strong>{count}</strong><span>n={rows.length}</span></header><SearchPitchLocationPlot pitches={rows} compact showLegend={false}/><footer><span>ボール {rows.filter(isBallResult).length}</span><span>スイング {swings}</span></footer></article>})}</div><SearchAnalysisLegend/></div><div className="count-bulk-print-root" aria-hidden="true">{selectedPitchers.map((row)=><article className="count-print-sheet" key={row.id}><CountPrintHeading pitcherName={row.name} filters={displayFilters} printedAt={printedAt} sample={row.pitches.length} pitches={row.pitches}/><CountAnalysisMatrix pitches={row.pitches} minimumSample={minimumSample}/></article>)}</div></section>;
+  const runnerFilter = onRunnerStateChange && <label className="count-runner-filter">走者状況（推定）<select aria-label="カウント別投球分析の走者状況" value={runnerState} onChange={event=>onRunnerStateChange(event.target.value)}>
+    <option value="">すべて</option><option value="1">一塁</option><option value="risp">得点圏</option><option value="any">走者あり</option>
+    {RUNNER_STATE_OPTIONS.filter(([value])=>value!=="1").map(([value,label])=><option key={value} value={value}>{label}</option>)}
+  </select></label>;
+  return <section className="search-analysis-workspace count-print-root"><div className="count-single-print-content"><CountPrintHeading pitcherName={pitcherName} filters={displayFilters} printedAt={printedAt} sample={pitches.length} pitches={pitches}/><header><div><span>COUNT ANALYSIS</span><h2>カウント別投球分析</h2><p>球種ごとの球数・割合・ボール／ストライクをカウント別に比較します。印刷はA4縦。投手ごとに改ページします。</p></div><div className="count-print-actions">{runnerFilter}{teamPitchers.length>0&&<details className="count-player-selection"><summary>印刷する選手を選択（{selectedPitchers.length}人）</summary><fieldset><legend>{filters.team}</legend><div className="count-selection-actions"><button type="button" className="secondary-button" onClick={()=>setPrintSelection({team:filters.team,ids:teamPitchers.map(row=>row.id)})}>全選択</button><button type="button" className="secondary-button" onClick={()=>setPrintSelection({team:filters.team,ids:[]})}>選択解除</button></div><div className="count-player-options">{teamPitchers.map(row=><label key={row.id}><input type="checkbox" checked={selectedIds.includes(row.id)} onChange={()=>togglePrintPitcher(row.id)}/><span>{row.name}</span></label>)}</div><button type="button" className="secondary-button count-print-button count-team-print-button" disabled={!selectedPitchers.length} onClick={()=>print("team")}>選択した選手を印刷（{selectedPitchers.length}人）</button></fieldset></details>}<button type="button" className="secondary-button count-print-button" disabled={!pitches.length} onClick={()=>print("single")}>現在の資料を印刷</button></div></header><CountAnalysisMatrix pitches={pitches} minimumSample={minimumSample}/><div className="count-plot-grid">{COUNT_ANALYSIS_COUNTS.map((count)=>{const rows=pitches.filter((row)=>`${row.balls}-${row.strikes}`===count);const swings=rows.filter(isScoutingSwing).length;return <article key={count}><header><strong>{count}</strong><span>n={rows.length}</span></header><SearchPitchLocationPlot pitches={rows} compact showLegend={false}/><footer><span>ボール {rows.filter(isBallResult).length}</span><span>スイング {swings}</span></footer></article>})}</div><SearchAnalysisLegend/></div><div className="count-bulk-print-root" aria-hidden="true">{selectedPitchers.map((row)=><article className="count-print-sheet" key={row.id}><CountPrintHeading pitcherName={row.name} filters={displayFilters} printedAt={printedAt} sample={row.pitches.length} pitches={row.pitches}/><CountAnalysisMatrix pitches={row.pitches} minimumSample={minimumSample}/></article>)}</div></section>;
 }
 
 function ApproachMetricCard({ label, metric }: { label: string; metric: RateMetric }) {
@@ -1554,7 +1590,7 @@ function boardConfig(data: Dataset, board: string): { rows: Row[]; columns: Colu
     pitching_percentile: [...pitchingBase, { key: "pitchingPlus", label: "総合投球スコア", format: "plus" }, { key: "stuffPlus", label: "球質スコア", format: "plus" }, { key: "locationPlus", label: "コーススコア", format: "plus" }, { key: "whiffRate", label: "空振り率", format: "rate" }, { key: "cswRate", label: "見逃し・空振り率", format: "rate" }],
     pitching_value: [...pitchingBase, { key: "pitchValuePer100", label: "100球得点価値" }, { key: "pitchValue", label: "得点価値" }, { key: "kMinusBbRate", label: "三振率－四球率", format: "rate" }],
     pitching_arsenal: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "usageRate", label: "使用率", format: "rate" }, { key: "avgVelocity", label: "平均球速" }, { key: "stuffPlus", label: "球質スコア", format: "plus" }, { key: "pitchingPlus", label: "総合投球スコア", format: "plus" }],
-    pitching_movement: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "avgIvb", label: "縦変化" }, { key: "avgHb", label: "横変化" }, { key: "avgVaa", label: "進入角" }, { key: "avgExtension", label: "エクステンション" }],
+    pitching_movement: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, ...MOVEMENT_COLUMNS, { key: "avgExtension", label: "エクステンション" }],
     pitching_angle: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "avgReleaseHeight", label: "リリース高" }, { key: "avgReleaseSide", label: "リリース横" }, { key: "avgVerticalReleaseAngle", label: "縦リリース角" }, { key: "avgHorizontalReleaseAngle", label: "横リリース角" }],
     pitching_spin: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "avgSpin", label: "平均回転数" }, { key: "avgIvb", label: "縦変化" }, { key: "avgHb", label: "横変化" }],
     catching_framing: [{ key: "name", label: "捕手", player: true }, { key: "team", label: "大学" }, { key: "received", label: "捕球数" }, { key: "shadowPitches", label: "境界球" }, { key: "actualStrikeRate", label: "実ストライク率", format: "rate" }, { key: "expectedStrikeRate", label: "期待ストライク率", format: "rate" }, { key: "extraStrikes", label: "追加ストライク" }, { key: "framingRuns", label: "フレーミング得点" }, { key: "framingPer1000", label: "境界1000球換算" }],
@@ -1586,7 +1622,7 @@ function boardConfig(data: Dataset, board: string): { rows: Row[]; columns: Colu
   const selectedColumns = configs[board] ?? configs.pitching_percentile;
   const [defaultSort, defaultDirection] = defaultSorts[board] ?? [selectedColumns[selectedColumns.length - 1]?.key ?? "pitches", "desc"];
   return {
-    rows: board === "batting_qab" ? qabRankingRows(data.batters, data.pitches) : isBatterPitchType ? batterPitchTypeRows(data) : isPitchStrikeouts ? pitchStrikeoutRows(data.pitchers, data.pitches) : isStrikeouts ? pitcherStrikeoutRows(data.pitchers) : isPitchType ? data.pitchTypes : isCatcher ? data.catchers : board.startsWith("batting_") ? battingRows : data.pitchers,
+    rows: board === "batting_qab" ? qabRankingRows(data.batters, data.pitches) : isBatterPitchType ? batterPitchTypeRows(data) : isPitchStrikeouts ? pitchStrikeoutRows(data.pitchers, data.pitches) : isStrikeouts ? pitcherStrikeoutRows(data.pitchers) : isPitchType ? (board === "pitching_movement" ? withPitchTypeExtrema(data.pitchTypes, data.pitches) : data.pitchTypes) : isCatcher ? data.catchers : board.startsWith("batting_") ? battingRows : data.pitchers,
     columns: selectedColumns,
     minKey: isPitchType || isBatterPitchType ? "pitches" : isFraming ? "shadowPitches" : isPopTime ? "popTimeSamples" : isCatcher ? "received" : board.startsWith("batting_") ? "pa" : "pitches",
     minDefault: board === "pitching_strikeouts" || isPitchStrikeouts ? 1 : isBatterPitchType ? (batterDisplayMinimum(data.batters) === 1 ? 1 : 25) : isPitchType ? 25 : isPopTime ? 1 : isCatcher ? 100 : board.startsWith("batting_") ? batterDisplayMinimum(battingRows) : 100,
@@ -1615,7 +1651,7 @@ function LeaderboardsContent({ data, board, navigate, group, setGroup }: { data:
   const setDirection = (value: "asc" | "desc") => remembered.set("direction", value);
   const normalizedQuery = normalizeSearch(query);
   const rows = config.rows.filter((row) => (row[config.minKey] ?? 0) >= minimum && (!team || row.team === team) && (!normalizedQuery || [row.kanji,row.pitcherKanji,row.batterKanji,row.romanName,row.name,row.pitcher,row.batter,row.team,row.pitchType,...(row.aliases??[])].some((value)=>normalizeSearch(String(value??"")).includes(normalizedQuery))))
-    .sort((a, b) => { const av = sortKey === "innings" && a[sortKey] != null ? Number(a[sortKey]) : a[sortKey]; const bv = sortKey === "innings" && b[sortKey] != null ? Number(b[sortKey]) : b[sortKey]; if (av == null) return bv == null ? 0 : 1; if (bv == null) return -1; if (typeof av === "string") return direction === "asc" ? av.localeCompare(bv) : bv.localeCompare(av); return direction === "asc" ? av - bv : bv - av; });
+    .sort((a, b) => { const av = sortKey === "innings" && a[sortKey] != null ? Number(a[sortKey]) : a[sortKey]; const bv = sortKey === "innings" && b[sortKey] != null ? Number(b[sortKey]) : b[sortKey]; if (av == null) return bv == null ? 0 : 1; if (bv == null) return -1; if (typeof av === "string") return direction === "asc" ? av.localeCompare(bv) : bv.localeCompare(av); const difference = pitchExtremaSortValue(sortKey, av) - pitchExtremaSortValue(sortKey, bv); return direction === "asc" ? difference : -difference; });
   function sort(key: string) { if (sortKey === key) setDirection(direction === "desc" ? "asc" : "desc"); else { setSortKey(key); setDirection("desc"); } }
   return (
     <PageSection eyebrow="ランキング" title={group === 'standard' ? (BOARD_LABELS[board] ?? "投球・投球総合スコア") : options.find(([key]) => key === group)?.[1] ?? 'ランキング'} description={`${BOARD_DESCRIPTIONS[board] ?? ""} 列の矢印で並べ替え、下線付きの項目名で説明を表示できます。最低件数と大学も変更できます。`.trim()}>
@@ -2033,7 +2069,7 @@ function SampleNotice({ n, threshold = 20 }: { n: number; threshold?: number }) 
 function PitcherTab({ tab, season, player, pitches, allPitches, arsenal, benchmarks, filtersActive, spinPitchType, onOpenSpin }: { tab: string; season: SeasonKey; player: Row; pitches: Row[]; allPitches: Row[]; arsenal: Row[]; benchmarks: Record<string, Benchmark>; filtersActive: boolean; spinPitchType: string; onOpenSpin: (pitchType: string) => void }) {
   if (tab === "概要") return <><SampleNotice n={pitches.length} threshold={50} /><PitcherProfile player={player} pitches={pitches} allPitches={allPitches} arsenal={summarizeByPitchType(pitches, "pitcher")} benchmarks={benchmarks} onOpenSpin={onOpenSpin} /></>;
   if (tab === "PITCHスコア") return <PitchQualityPlayerPanel player={player} arsenal={arsenal} />;
-  if (tab === "球種") return <div className="profile-body"><SampleNotice n={pitches.length} threshold={50} /><div className="chart-grid"><ChartCard title="投球位置"><PitchLocationBySide pitches={pitches} /></ChartCard><ChartCard title="リリース位置"><ReleasePlot pitches={pitches} /></ChartCard></div><SectionTitle title="球種別成績" /><SimpleTable rows={summarizeByPitchType(pitches, "pitcher")} rowKey="pitchType" onRowKeyClick={(row) => onOpenSpin(String(row.pitchType))} columns={[{key:"pitchType",label:"球種"},{key:"pitches",label:"球数"},{key:"avgVelocity",label:"平均球速"},{key:"maxVelocity",label:"最高球速"},{key:"avgSpin",label:"回転数"},{key:"avgIvb",label:"縦変化"},{key:"avgHb",label:"横変化"},{key:"avgVaa",label:"進入角"},{key:"avgExtension",label:"エクステンション"},{key:"whiffRate",label:"空振り率",format:"rate"},{key:"swingingStrikeRate",label:"SwStr%",format:"rate"},{key:"cswRate",label:"見逃し・空振り率",format:"rate"},{key:"avgExitVelocity",label:"平均被打球速度"},{key:"hardHitRate",label:"被強打率",format:"rate"},{key:"sampleNote",label:"標本"}]} /></div>;
+  if (tab === "球種") return <div className="profile-body"><SampleNotice n={pitches.length} threshold={50} /><div className="chart-grid"><ChartCard title="投球位置"><PitchLocationBySide pitches={pitches} /></ChartCard><ChartCard title="リリース位置"><ReleasePlot pitches={pitches} /></ChartCard></div><SectionTitle title="球種別成績" /><SimpleTable rows={summarizeByPitchType(pitches, "pitcher")} rowKey="pitchType" onRowKeyClick={(row) => onOpenSpin(String(row.pitchType))} columns={[{key:"pitchType",label:"球種"},{key:"pitches",label:"球数"},{key:"avgVelocity",label:"平均球速"},{key:"maxVelocity",label:"最高球速"},{key:"avgSpin",label:"回転数"},...MOVEMENT_COLUMNS,{key:"avgExtension",label:"エクステンション"},{key:"whiffRate",label:"空振り率",format:"rate"},{key:"swingingStrikeRate",label:"SwStr%",format:"rate"},{key:"cswRate",label:"見逃し・空振り率",format:"rate"},{key:"avgExitVelocity",label:"平均被打球速度"},{key:"hardHitRate",label:"被強打率",format:"rate"},{key:"sampleNote",label:"標本"}]} /></div>;
   if (tab === "回転") return <PitchSpinProfile season={season} playerId={player.id} playerName={player.kanji || player.name} pitches={pitches} filtersActive={filtersActive} initialPitchType={spinPitchType} />;
   if (tab === "コース") return <PitcherLocationPanel pitches={pitches} />;
   if (tab === "打球") return <div className="profile-body"><SampleNotice n={pitches.filter((row) => Number.isFinite(row.exitVelocity)).length} threshold={20} /><div className="chart-grid"><ChartCard title="被打球方向"><SprayChart pitches={pitches} /></ChartCard><ChartCard title="シームレス被打球ヒートマップ"><ContinuousZoneHeatmap pitches={pitches} role="pitcher" /></ChartCard></div></div>;
@@ -2411,7 +2447,7 @@ function PitcherProfile({ player, pitches, allPitches, arsenal, benchmarks, onOp
     <div className="profile-body">
       <div className="chart-grid"><ChartCard title="球種別変化量"><MovementChart pitches={pitches} /></ChartCard><ChartCard title="左右別・ゾーン別被打球速度"><ZoneHeatmap pitches={allPitches} playerId={player.id} role="pitcher" /></ChartCard></div>
       <SectionTitle title="球種構成" />
-      <SimpleTable rows={arsenal} rowKey="pitchType" onRowKeyClick={(row) => onOpenSpin(String(row.pitchType))} columns={[{ key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "usageRate", label: "使用率", format: "rate" }, { key: "avgVelocity", label: "平均球速" }, { key: "maxVelocity", label: "最高球速" }, { key: "avgSpin", label: "回転数" }, { key: "avgIvb", label: "縦変化" }, { key: "avgHb", label: "横変化" }, { key: "whiffRate", label: "空振り率", format: "rate" }, { key: "swingingStrikeRate", label: "SwStr%", format: "rate" }, { key: "stuffPlus", label: "球質スコア", format: "plus" }]} />
+      <SimpleTable rows={arsenal} rowKey="pitchType" onRowKeyClick={(row) => onOpenSpin(String(row.pitchType))} columns={[{ key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "usageRate", label: "使用率", format: "rate" }, { key: "avgVelocity", label: "平均球速" }, { key: "maxVelocity", label: "最高球速" }, { key: "avgSpin", label: "回転数" }, ...MOVEMENT_COLUMNS, { key: "whiffRate", label: "空振り率", format: "rate" }, { key: "swingingStrikeRate", label: "SwStr%", format: "rate" }, { key: "stuffPlus", label: "球質スコア", format: "plus" }]} />
       <ChartCard title="試合別ストレート平均球速推移"><RollingChart pitches={pitches.filter((row) => row.pitchType === "ストレート")} mode="pitcher" /></ChartCard>
       <div className="metric-strip">{metrics.map(([label, key, format]) => <MetricBlock key={key} label={label} metricKey={key} value={player[key]} format={format as Column["format"]} benchmark={benchmarks[key]} />)}</div>
       <BenchmarkGuide text="投手100球以上" />
@@ -2679,7 +2715,6 @@ function MovementChart({ pitches }: { pitches: Row[] }) {
 
 function ZoneHeatmap({ pitches, playerId, role }: { pitches: Row[]; playerId: string; role: "pitcher" | "batter" }) {
   const [side, setSide] = useState<"右" | "左">("右");
-  const [mode, setMode] = useState<"adjusted" | "raw">("adjusted");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const playerBatterSide = pitches.find((row) => row.batterId === playerId)?.batterSide ?? "右";
   const battingSideForLabels = role === "pitcher" ? side : playerBatterSide;
@@ -2696,49 +2731,17 @@ function ZoneHeatmap({ pitches, playerId, role }: { pitches: Row[]; playerId: st
     };
     const eligible = pitches.filter(isEligible);
     const sidePool = eligible.filter(matchesSide);
-    const peerPool = sidePool.filter((row) => !matchesPlayer(row));
-    const peers = peerPool.length ? peerPool : sidePool;
-    const conditionPeers = new Map<string, { sum: number; n: number }>();
-    const zonePeers = new Map<number, { sum: number; n: number }>();
-    let peerSum = 0;
-    let peerCount = 0;
-    for (const row of peers) {
-      const index = zoneIndex(row);
-      const conditionKey = `${index}|${row.pitchType ?? "不明"}`;
-      const condition = conditionPeers.get(conditionKey) ?? { sum: 0, n: 0 };
-      condition.sum += row.exitVelocity;
-      condition.n += 1;
-      conditionPeers.set(conditionKey, condition);
-      const zone = zonePeers.get(index) ?? { sum: 0, n: 0 };
-      zone.sum += row.exitVelocity;
-      zone.n += 1;
-      zonePeers.set(index, zone);
-      peerSum += row.exitVelocity;
-      peerCount += 1;
-    }
     const working = Array.from({ length: 9 }, () => ({ rows: [] as Row[], sum: 0 }));
     for (const row of sidePool.filter(matchesPlayer)) {
       const bin = working[zoneIndex(row)];
       bin.rows.push(row);
       bin.sum += row.exitVelocity;
     }
-    return working.map((bin, index) => {
-      const n = bin.rows.length;
-      const raw = n ? bin.sum / n : null;
-      const zone = zonePeers.get(index);
-      const zoneMean = zone?.n ? zone.sum / zone.n : peerCount ? peerSum / peerCount : raw;
-      const priors = bin.rows.map((row) => {
-        const condition = conditionPeers.get(`${index}|${row.pitchType ?? "不明"}`);
-        if (!condition?.n) return zoneMean;
-        const conditionMean = condition.sum / condition.n;
-        if (zoneMean === null) return conditionMean;
-        const conditionWeight = condition.n / (condition.n + 5);
-        return conditionWeight * conditionMean + (1 - conditionWeight) * zoneMean;
-      }).filter((value): value is number => value !== null && Number.isFinite(value));
-      const prior = priors.length ? priors.reduce((sum, value) => sum + value, 0) / priors.length : zoneMean;
-      const adjusted = raw === null ? null : prior === null ? raw : (n * raw + 5 * prior) / (n + 5);
-      return { n, raw, prior, adjusted, values: bin.rows.map((row) => row.exitVelocity) };
-    });
+    return working.map((bin) => ({
+      n: bin.rows.length,
+      raw: bin.rows.length ? bin.sum / bin.rows.length : null,
+      values: bin.rows.map((row) => row.exitVelocity),
+    }));
   }, [pitches, playerId, role, side]);
   const baseColor = (value: number) => {
     const t = Math.max(0, Math.min(1, (value - 115) / 50));
@@ -2753,23 +2756,21 @@ function ZoneHeatmap({ pitches, playerId, role }: { pitches: Row[]; playerId: st
     const luminance = mixed[0] * 0.299 + mixed[1] * 0.587 + mixed[2] * 0.114;
     return { background: `rgb(${mixed.join(",")})`, color: luminance < 145 ? "white" : "#172327" };
   };
-  const reliability = (n: number) => n <= 2 ? "参考" : n <= 4 ? "少数" : n <= 9 ? "標準" : "高信頼";
   const selected = selectedIndex === null ? null : bins[selectedIndex];
   const selectedLabel = selectedIndex === null ? "" : `${verticalLabels[Math.floor(selectedIndex / 3)]}・${labels[selectedIndex % 3]}`;
   const changeSide = (value: "右" | "左") => { setSide(value); setSelectedIndex(null); };
   return (
     <div className="heatmap-wrap">
       <div className="heatmap-controls">
-        <div><span>対戦</span><div className="segmented small"><button className={side === "右" ? "active" : ""} onClick={() => changeSide("右")}>{role === "pitcher" ? "右打者" : "右投手"}</button><button className={side === "左" ? "active" : ""} onClick={() => changeSide("左")}>{role === "pitcher" ? "左打者" : "左投手"}</button></div></div>
-        <div><span>表示値</span><div className="segmented small"><button className={mode === "adjusted" ? "active" : ""} onClick={() => setMode("adjusted")}>補正値</button><button className={mode === "raw" ? "active" : ""} onClick={() => setMode("raw")}>生データ</button></div></div>
+        <div><span>対戦</span><div className="segmented small heatmap-side-toggle" role="group" aria-label="対戦相手の左右">{(["左", "右"] as const).map((value) => <button type="button" key={value} className={side === value ? "active" : ""} aria-pressed={side === value} aria-label={`${value}${role === "pitcher" ? "打者" : "投手"}`} onClick={() => changeSide(value)}>{value}</button>)}</div></div>
       </div>
       <div className="heat-labels"><span />{[...labels].reverse().map((label) => <span key={label}>{label}</span>)}</div>
       <div className="heatmap-matrix">
         <div className="heat-row-labels">{verticalLabels.map((label) => <span key={label}>{label}</span>)}</div>
         <div className="heatmap-grid">{catcherGridOrder(bins.map((bin, index) => ({bin, index})), 3).map(({bin, index}) => {
-          const value = mode === "adjusted" ? bin.adjusted : bin.raw;
+          const value = bin.raw;
           const zoneName = `${verticalLabels[Math.floor(index / 3)]}・${labels[index % 3]}`;
-          return <button type="button" className={selectedIndex === index ? "active" : ""} key={index} style={cellStyle(value, bin.n)} disabled={!bin.n} onClick={() => setSelectedIndex(selectedIndex === index ? null : index)} aria-label={`${zoneName}、${value === null ? "データなし" : `${value.toFixed(1)}km/h、${bin.n}打球`}`} aria-pressed={selectedIndex === index}><strong>{value === null ? "—" : value.toFixed(1)}</strong><small>{bin.n ? `n=${bin.n}・${reliability(bin.n)}` : "n=0"}</small></button>;
+          return <button type="button" className={selectedIndex === index ? "active" : ""} key={index} style={cellStyle(value, bin.n)} disabled={!bin.n} onClick={() => setSelectedIndex(selectedIndex === index ? null : index)} aria-label={`${zoneName}、${value === null ? "データなし" : `${value.toFixed(1)}km/h、${bin.n}打球`}`} aria-pressed={selectedIndex === index}><strong>{value === null ? "—" : value.toFixed(1)}</strong><small>{bin.n ? `n=${bin.n}` : "n=0"}</small></button>;
         })}</div>
       </div>
       <CatcherViewAxis/>
@@ -2778,7 +2779,7 @@ function ZoneHeatmap({ pitches, playerId, role }: { pitches: Row[]; playerId: st
 
       {selected && selected.n > 0 && <section className="heat-detail" aria-live="polite">
         <header><strong>{selectedLabel}</strong><button type="button" onClick={() => setSelectedIndex(null)} aria-label="詳細を閉じる">×</button></header>
-        <div><span>補正平均<b>{selected.adjusted?.toFixed(1)} km/h</b></span><span>生平均<b>{selected.raw?.toFixed(1)} km/h</b></span><span>リーグ基準<b>{selected.prior?.toFixed(1) ?? "—"} km/h</b></span><span>打球数<b>{selected.n}</b></span></div>
+        <div><span>平均打球速度<b>{selected.raw?.toFixed(1)} km/h</b></span><span>打球数<b>{selected.n}</b></span></div>
         <p>個別打球速度</p><div className="heat-values">{[...selected.values].sort((a, b) => b - a).map((value, index) => <span key={`${value}-${index}`}>{value.toFixed(1)}</span>)}</div>
       </section>}
     </div>
@@ -2868,7 +2869,7 @@ function GlossaryView() {
     ["投球", [["球質スコア", "球種別に球速、回転数、変化量、進入角、エクステンションを標準化した球そのものの指数。平均50、突出時は100超。"], ["コーススコア", "真ん中を避け、境界や追いかけさせる位置へ投げた度合いを評価。平均50、突出時は100超。"], ["総合投球スコア", "球質スコアとコーススコアを同じ比率で統合。平均50、突出時は100超。"], ["100球得点価値", "各球のカウント・結果価値を投手側の得点抑止として100球換算。正の値ほど投手有利。"], ["推定被加重出塁率", METRIC_INFO.xwobaAllowed.meaning], ["推定失点率", METRIC_INFO.xera.meaning], ["SwStr%", METRIC_INFO.swingingStrikeRate.meaning], ["進入角", "ホームベース到達時のボールの縦方向角度。値が小さいほど下向き。"], ["真ん中率", "ストライクゾーン中央3分の1へ投げた割合。"]]],
     ["捕手", [["期待ストライク率", METRIC_INFO.expectedStrikeRate.meaning], ["追加ストライク", METRIC_INFO.extraStrikes.meaning], ["フレーミング得点", METRIC_INFO.framingRuns.meaning], ["境界1000球換算", METRIC_INFO.framingPer1000.meaning]]],
   ];
-  return <PageSection eyebrow="指標解説" title="ID東都用語集" description="サイトに表示する指標の意味と計算方針です。指標名を押すと詳しい説明が開きます。"><div className="glossary-grid"><section><h2>コース図・打球図</h2><div><h3>分析ゾーン</h3><p>横位置 −0.254〜0.254 m、高さ 0.45〜1.05 m の固定範囲。打者別の上下限ではありません。縦横を同じ縮尺で表示します。</p></div><div><h3>打球位置</h3><p>BearingとDistanceの記録値を使用。捕手視点で左が負、右が正、中央が0度です。距離未計測は描画しません。本塁打も記録距離のまま表示します。球場の外周は参考形状です。</p></div><div><h3>コース別打球速度</h3><p>補正値は同じゾーン・球種・左右のリーグ平均へ補正。少数領域は薄色です。領域を選択すると元の数値を確認できます。</p></div><div><h3>フレーミング分布</h3><p>実ストライク率と期待ストライク率の差。25領域を平滑化して表示します。</p></div></section>{groups.map(([title, items]: any) => <section key={title}><h2>{title}</h2>{items.map(([term, description]: string[]) => <div key={term}><h3><MetricLabel label={term} /></h3><p>{description}</p></div>)}</section>)}</div><details className="method-card chart-definition"><summary>比較上の注意</summary><p>TrackManで計測できたプレーを対象とするため、公式記録と完全には一致しない場合があります。サンプルが少ない選手はランキングの最低打席・最低球数で除外してください。推定指標は東都リーグ内比較用で、プロ野球やMLBの値と直接比較するものではありません。</p></details></PageSection>;
+  return <PageSection eyebrow="指標解説" title="ID東都用語集" description="サイトに表示する指標の意味と計算方針です。指標名を押すと詳しい説明が開きます。"><div className="glossary-grid"><section><h2>コース図・打球図</h2><div><h3>分析ゾーン</h3><p>横位置 −0.254〜0.254 m、高さ 0.45〜1.05 m の固定範囲。打者別の上下限ではありません。縦横を同じ縮尺で表示します。</p></div><div><h3>打球位置</h3><p>BearingとDistanceの記録値を使用。捕手視点で左が負、右が正、中央が0度です。距離未計測は描画しません。本塁打も記録距離のまま表示します。球場の外周は参考形状です。</p></div><div><h3>コース別打球速度</h3><p>各ゾーンで計測されたフェア打球の平均速度です。バント・速度や角度の未計測打球は除きます。少数領域は薄色です。領域を選択すると打球数と個別の速度を確認できます。</p></div><div><h3>フレーミング分布</h3><p>実ストライク率と期待ストライク率の差。25領域を平滑化して表示します。</p></div></section>{groups.map(([title, items]: any) => <section key={title}><h2>{title}</h2>{items.map(([term, description]: string[]) => <div key={term}><h3><MetricLabel label={term} /></h3><p>{description}</p></div>)}</section>)}</div><details className="method-card chart-definition"><summary>比較上の注意</summary><p>TrackManで計測できたプレーを対象とするため、公式記録と完全には一致しない場合があります。サンプルが少ない選手はランキングの最低打席・最低球数で除外してください。推定指標は東都リーグ内比較用で、プロ野球やMLBの値と直接比較するものではありません。</p></details></PageSection>;
 }
 
 function PageSection({ title, children }: { eyebrow: string; title: string; description: string; children: ReactNode }) {
@@ -2888,5 +2889,5 @@ function EmptyState({ title, action }: { title: string; action: () => void }) {
 }
 
 function Footer({ navigate }: { navigate: (route: RouteState) => void }) {
-  return <footer><div><BrandMark /></div><div><h3>データ</h3><button onClick={() => navigate({ view: "search" })}>投球検索</button><button onClick={() => navigate({ view: "barrel" })}>バレルゾーン</button><button onClick={() => navigate({ view: "quality" })}>PITCHスコア</button><button onClick={() => navigate({ view: "spin" })}>回転</button><button onClick={() => navigate({ view: "leaders", board: "pitching_percentile" })}>ランキング</button><button onClick={() => navigate({ view: "shift" })}>守備シフト</button><button onClick={() => navigate({ view: "glossary" })}>指標解説</button><button onClick={() => window.location.assign("/ai")}>AI向けデータ案内</button></div><div><h3>管理</h3><button onClick={() => window.location.assign("/admin")}>管理者ログイン</button><small>CSV更新は管理者のみ</small></div></footer>;
+  return <footer><div><BrandMark /></div><div><h3>データ</h3><button onClick={() => navigate({ view: "search" })}>投球検索</button><button onClick={() => navigate({ view: "trajectory" })}>投球軌道</button><button onClick={() => navigate({ view: "quality" })}>PITCHスコア</button><button onClick={() => navigate({ view: "spin" })}>回転</button><button onClick={() => navigate({ view: "leaders", board: "pitching_percentile" })}>ランキング</button><button onClick={() => navigate({ view: "shift" })}>守備シフト</button><button onClick={() => navigate({ view: "glossary" })}>指標解説</button><button onClick={() => window.location.assign("/ai")}>AI向けデータ案内</button></div><div><h3>管理</h3><button onClick={() => window.location.assign("/admin")}>管理者ログイン</button><small>CSV更新は管理者のみ</small></div></footer>;
 }

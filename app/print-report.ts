@@ -59,7 +59,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
     } else window.addEventListener('resize', resize);
     await waitForReady(document.fonts.ready, preparation.signal);
     if (disposed) return;
-    const pageSelector = kind === 'count'
+    const pageSelector = kind === 'opponent' || kind === 'batter-direction' ? '.opponent-print-page' : kind === 'count'
       ? mode === 'team' ? '.count-bulk-print-root > .count-print-sheet' : '.count-single-print-content'
       : kind === 'spray' ? '.spray-print-sheet' : kind === 'batter-profile' ? '.batter-profile-print-page' : kind === 'batter-side' ? '.bs-sheet' : '.scouting-print-sheet';
     const sources = Array.from(source.querySelectorAll<HTMLElement>(pageSelector));
@@ -69,7 +69,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
     doc.head.replaceChildren();
     doc.body.replaceChildren();
     const title = doc.createElement('title');
-    const reportName = kind === 'spray' ? '打球方向' : kind === 'count' ? 'カウント別投球分析' : kind === 'batter-profile' ? '打者プロファイル' : kind === 'batter-side' ? '左右別打者分析' : kind === 'side' ? '左右別投球分析' : '打者分析';
+    const reportName = kind === 'opponent' ? '対戦大学資料' : kind === 'batter-direction' ? '左右別打球方向' : kind === 'spray' ? '打球方向' : kind === 'count' ? 'カウント別投球分析' : kind === 'batter-profile' ? '打者プロファイル' : kind === 'batter-side' ? '左右別打者分析' : kind === 'side' ? '左右別投球分析' : '打者分析';
     title.textContent = reportName;
     doc.head.append(title);
     // Preserve cascade order and activate print rules for the preview too.
@@ -101,10 +101,12 @@ export async function printReport(selector: string, kind: string, mode = 'single
     sources.forEach((pageSource, index) => {
       const page = doc.createElement('section');
       page.className = 'print-document-page';
+      if (kind === 'opponent') page.dataset.orientation = pageSource.dataset.printKind === 'count' ? 'portrait' : 'landscape';
       const content = doc.createElement('div');
       content.className = 'print-document-content';
       const root = source.cloneNode(false) as HTMLElement;
       root.removeAttribute('id');
+      root.removeAttribute('aria-hidden');
       const snapshot = pageSource.cloneNode(true) as HTMLElement;
       snapshot.removeAttribute('aria-hidden');
       snapshot.querySelectorAll('script, button, input, select, textarea, [role=tooltip], .count-plot-grid, .count-player-selection, .search-analysis-legend').forEach(node => node.remove());
@@ -123,7 +125,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
       });
       root.append(snapshot);
       content.append(root);
-      const name = snapshot.querySelector('.bs-heading h2, .spray-print-heading h1, .count-print-heading strong, .scouting-print-heading strong, .batter-profile-print-player h1')?.textContent?.trim() || reportName;
+      const name = snapshot.querySelector('.opponent-heading h2, .bs-heading h2, .spray-print-heading h1, .count-print-heading strong, .scouting-print-heading strong, .batter-profile-print-player h1')?.textContent?.trim() || reportName;
       names.push(name);
       const footer = doc.createElement('div');
       footer.className = 'print-document-footer';
@@ -135,8 +137,12 @@ export async function printReport(selector: string, kind: string, mode = 'single
       page.append(content, footer);
       doc.body.append(page);
     });
-    meta.textContent = `A4${layout.label}・余白7mm｜${reportName}｜${sources.length}ページ｜${names.join('、')}`;
-    frameHeight = sources.length * layout.height * 96 / 25.4 + (sources.length - 1) * 16;
+    const uniqueNames = [...new Set(names)];
+    const nameSummary = kind === 'opponent' && uniqueNames.length > 6
+      ? `${uniqueNames.slice(0, 6).join('、')} ほか${uniqueNames.length - 6}件`
+      : uniqueNames.join('、');
+    meta.textContent = `A4${layout.label}・余白7mm｜${reportName}｜${sources.length}ページ｜${nameSummary}`;
+    frameHeight = sources.reduce((sum, page) => sum + (kind === 'opponent' ? getPrintLayout(page.dataset.printKind || 'batter-side').height : layout.height) * 96 / 25.4, 0) + (sources.length - 1) * 16;
     resize();
     await waitForReady(doc.fonts.ready, preparation.signal);
     await waitForReady(Promise.all(Array.from(doc.images, img => img.decode())), preparation.signal);

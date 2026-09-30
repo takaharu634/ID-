@@ -68,23 +68,23 @@
     },
     {
       "name": "season-2026-fall.json",
-      "bytes": 8703399,
-      "sha256": "fe7a370562c657373b07717538254f5b3235886db943925ca4aeeb2e9d0ea123",
+      "bytes": 9331958,
+      "sha256": "a42de293cabb3315f110b1c3978de9a1c9ba02f0811dcbe06fde34ec8a341722",
       "parts": [
         {
-          "key": "blocks/5c4ec7d57a821f7d8e2843313633b15283d23fa2f7d234ec2f56e0f700afbc68.gz",
-          "sha256": "5c4ec7d57a821f7d8e2843313633b15283d23fa2f7d234ec2f56e0f700afbc68",
+          "key": "blocks/baa16d00383cff2004213d8ee671c87724a0aaf4415f35fb5d9527205dbb8d9f.gz",
+          "sha256": "baa16d00383cff2004213d8ee671c87724a0aaf4415f35fb5d9527205dbb8d9f",
           "rawBytes": 4194304
         },
         {
-          "key": "blocks/19759e21dd1d2098a7a33ad610a6ba401a7595fac3e55cfe811a17957b5f173a.gz",
-          "sha256": "19759e21dd1d2098a7a33ad610a6ba401a7595fac3e55cfe811a17957b5f173a",
+          "key": "blocks/f800e3f95b2818a5c20dd4385e5d3c03cf4ab263ae63dd25f190be98592ef33e.gz",
+          "sha256": "f800e3f95b2818a5c20dd4385e5d3c03cf4ab263ae63dd25f190be98592ef33e",
           "rawBytes": 4194304
         },
         {
-          "key": "blocks/b09f8375ad70fe9a5c10a1cb00839449ec4fa470d821cc101ba4b6ef4d71f882.gz",
-          "sha256": "b09f8375ad70fe9a5c10a1cb00839449ec4fa470d821cc101ba4b6ef4d71f882",
-          "rawBytes": 314791
+          "key": "blocks/28f0c1e5b34d5321066a2fb20558c43b4bd5120e1a406825b0af5ffc511470b8.gz",
+          "sha256": "28f0c1e5b34d5321066a2fb20558c43b4bd5120e1a406825b0af5ffc511470b8",
+          "rawBytes": 943350
         }
       ]
     },
@@ -139,13 +139,13 @@
     },
     {
       "name": "spin-2026-fall.json",
-      "bytes": 2145320,
-      "sha256": "4ca28e38febcd66e60c002b6fe784d0a2f77676e0da934bf62ad805c9270ea65",
+      "bytes": 2310389,
+      "sha256": "894629b1f716721eaf2a443fd721d72b195972eea0eef7ae0a043306f0f150f6",
       "parts": [
         {
-          "key": "blocks/7083962a924b5ce5e3bc6bf05159da111367dd106a21b8d8c9a193b83961943f.gz",
-          "sha256": "7083962a924b5ce5e3bc6bf05159da111367dd106a21b8d8c9a193b83961943f",
-          "rawBytes": 2145320
+          "key": "blocks/c911be4921a21e60e00beecb3d44d9c27570a67f57f962215f3afa2da064d08f.gz",
+          "sha256": "c911be4921a21e60e00beecb3d44d9c27570a67f57f962215f3afa2da064d08f",
+          "rawBytes": 2310389
         }
       ]
     },

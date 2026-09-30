@@ -1,7 +1,7 @@
 'use client';
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { catcherGridIndex } from '../lib/catcher-view';
-import { fieldSector } from '../lib/chart-geometry';
+import { BattedBallDirectionChart, BattedDirectionLegend } from './batted-ball-direction';
 import type { Row } from '../lib/dataset-types';
 import { BATTER_FAMILIES, batterFamily, reportAverage, reportContact, reportNineZone, reportRate, reportRisp, reportStats } from '../lib/batter-side-report';
 import { printReport } from './print-report';
@@ -23,12 +23,7 @@ function NineMap({rows,frequency=false}:{rows:Row[];frequency?:boolean}) {
   })}</svg>;
 }
 function Spray({rows}:{rows:Row[]}) {
-  const valid=rows.filter(p=>reportContact(p)&&Number.isFinite(p.sprayAngle??p.direction)&&Math.abs(p.sprayAngle??p.direction)<=90&&Number.isFinite(p.distance)&&p.distance>=0);
-  const max=Math.max(120,...valid.map(p=>p.distance));
-  return <div><svg viewBox="0 0 240 220" role="img" aria-label="打球方向と距離（捕手側から見た図）"><path d={fieldSector(120,200,104)} fill="white" stroke="#9aa9b2"/>
-    {valid.map((p,i)=>{const a=(p.sprayAngle??p.direction)*Math.PI/180,r=p.distance/max*104,x=120+Math.sin(a)*r,y=200-Math.cos(a)*r;const color=p.playResult==='本塁打'?'#be2637':['単打','二塁打','三塁打'].includes(p.playResult)?'#15806b':'#596772';return <g key={i}><line x1="120" y1="200" x2={x} y2={y} stroke={color} strokeWidth="1" opacity=".6"/><circle cx={x} cy={y} r="2.5" fill={color}/></g>;})}
-    <text x="120" y="27" textAnchor="middle" fontSize="14">{Math.ceil(max)} m</text><text x="120" y="217" textAnchor="middle" fontSize="12">描画 {valid.length} / 打球 {rows.filter(reportContact).length}</text>
-  </svg></div>;
+  return <div><BattedBallDirectionChart rows={rows} compact/></div>;
 }
 function FamilyTable({rows}:{rows:Row[]}) {
   return <div className="bp-families">{BATTER_FAMILIES.map(f=>{const subset=rows.filter(p=>batterFamily(p.pitchType)===f),s=reportStats(subset);const contact=subset.filter(reportContact);return <section key={f}><h4>{f} <b>{reportAverage(subset)}</b></h4><p>HR:{s.hr}　K:{s.k}　{ subset.length}球</p><p>ゴ:{contact.filter(p=>p.hitType==='GroundBall').length}　フ:{contact.filter(p=>['FlyBall','Popup'].includes(p.hitType)).length}　ラ:{contact.filter(p=>p.hitType==='LineDrive').length}　他:{contact.filter(p=>!['GroundBall','FlyBall','Popup','LineDrive'].includes(p.hitType)).length}</p></section>;})}</div>;
@@ -56,10 +51,16 @@ export default function BatterPdfReport({pitches,label,locationPlot,legend,pitch
   const groups=useMemo(()=>{const map=new Map<string,Row[]>();for(const p of pitches){const key=keyOf(p);if(!map.has(key))map.set(key,[]);map.get(key)!.push(p);}return [...map.values()].sort((a,b)=>String(a[0].batterKanji||a[0].batter).localeCompare(String(b[0].batterKanji||b[0].batter),'ja'));},[pitches]);
   const [selected,setSelected]=useState('');const current=groups.find(g=>keyOf(g[0])===selected)||groups[0];
   return <section className="bs-report bp-report" id={`bp-${id}`}><div className="bs-actions"><label>表示する選手 <select value={current?keyOf(current[0]):''} onChange={e=>setSelected(e.target.value)} disabled={!groups.length}>{!groups.length&&<option value="">対象なし</option>}{groups.map(g=><option key={keyOf(g[0])} value={keyOf(g[0])}>{g[0].batterKanji||g[0].batter}（{g[0].batterTeam}）</option>)}</select></label><button className="secondary-button" disabled={!current} onClick={()=>printReport(`#bp-${id}`,'batter-side')}>この選手をA4横で印刷</button></div>
-    {!current?<p>対象データがありません。選手・期間・検索条件を確認してください。</p>:(()=>{const rows=current,p=rows[0],dates=rows.map(r=>String(r.date)).sort();return <article className="bs-sheet bp-sheet"><header className="bs-heading bp-heading"><div><h2>{p.batterKanji||p.batter}</h2><span>{p.batterTeam}・{p.batterSide}打</span></div><div><strong>左右別投球分析（打者）</strong><span>収録期間 {dates[0]}〜{dates[dates.length-1]}・{rows.length}球</span><span>{label}</span></div></header>
-      <div className="bp-halves">{['右','左'].map(side=>{const subset=rows.filter(r=>r.pitcherThrows===side);return <section className="bp-half" key={side}><h3>対{side}投手</h3><div className="bp-top"><section><h4>投球結果</h4>{locationPlot(subset,rows)}</section><section><h4>9エリア別打率</h4><NineMap rows={subset}/></section><section><h4>9エリア別投球割合</h4><NineMap rows={subset} frequency/></section></div><div className="bp-middle"><section><h4>打球方向・距離</h4><Spray rows={subset}/></section><FamilyTable rows={subset}/><PitchMix rows={subset} colors={pitchColors}/></div><div className="bp-bottom"><section><h4>カウント別球種（B−S）</h4><CountChart rows={subset} colors={pitchColors}/></section><StatsTable rows={subset}/></div><p className="bp-missing">位置不明 {subset.filter(r=>reportNineZone(r)===null).length}球・走者不明 {subset.filter(r=>!/^[0-7]$/.test(String(r.runnerStateCode))).length}球・その他球種 {subset.filter(r=>batterFamily(r.pitchType)==='その他').length}球</p></section>;})}</div>
-      <div className="bs-key bp-key">{legend}<span>打球線：赤＝本塁打・緑＝安打・灰＝その他。図は捕手視点。</span></div><details className="chart-definition bp-definitions"><summary>集計方法</summary><p>括弧内は打数−安打。犠打・犠飛は打数から除外、失策は含む。コース図は9エリア（ゾーン外を外周へ合算、位置不明は除外／割合の分母は全投球）。5打数未満は少数。得点圏は走者の推定値・不明は除外。打点未収録、犠打／犠飛を区別できない場合の出塁率は「—」。通算は現在の検索条件内。球種分類はID東都準拠。</p></details>
-      {rows.some(r=>!['右','左'].includes(r.pitcherThrows))&&<p className="bp-missing">投手左右不明：{rows.filter(r=>!['右','左'].includes(r.pitcherThrows)).length}球（左右の図表から除外）</p>}
-    </article>;})()}
+    {!current?<p>対象データがありません。選手・期間・検索条件を確認してください。</p>:<BatterPdfPage rows={current} label={label} locationPlot={locationPlot} legend={legend} pitchColors={pitchColors}/>}
   </section>;
+}
+
+export function BatterPdfPage({rows,label,locationPlot,legend,pitchColors={}}: Omit<BatterReportProps,'pitches'> & {rows:Row[]}) {
+  if (!rows.length) return null;
+  const p=rows[0],dates=rows.map(r=>String(r.date)).sort();
+  return <article className="bs-sheet bp-sheet"><header className="bs-heading bp-heading"><div><h2>{p.batterKanji||p.batter}</h2><span>{p.batterTeam}・{p.batterSide}打</span></div><div><strong>左右別投球分析（打者）</strong><span>収録期間 {dates[0]}〜{dates[dates.length-1]}・{rows.length}球</span><span>{label}</span></div></header>
+      <div className="bp-halves">{['右','左'].map(side=>{const subset=rows.filter(r=>r.pitcherThrows===side);return <section className="bp-half" key={side}><h3>対{side}投手</h3><div className="bp-top"><section><h4>投球結果</h4>{locationPlot(subset,rows)}</section><section><h4>9エリア別打率</h4><NineMap rows={subset}/></section><section><h4>9エリア別投球割合</h4><NineMap rows={subset} frequency/></section></div><div className="bp-middle"><section><h4>打球方向・距離</h4><Spray rows={subset}/></section><FamilyTable rows={subset}/><PitchMix rows={subset} colors={pitchColors}/></div><div className="bp-bottom"><section><h4>カウント別球種（B−S）</h4><CountChart rows={subset} colors={pitchColors}/></section><StatsTable rows={subset}/></div><p className="bp-missing">位置不明 {subset.filter(r=>reportNineZone(r)===null).length}球・走者不明 {subset.filter(r=>!/^[0-7]$/.test(String(r.runnerStateCode))).length}球・その他球種 {subset.filter(r=>batterFamily(r.pitchType)==='その他').length}球</p></section>;})}</div>
+      <div className="bs-key bp-key">{legend}<BattedDirectionLegend/></div><details className="chart-definition bp-definitions"><summary>集計方法</summary><p>括弧内は打数−安打。犠打・犠飛は打数から除外、失策は含む。コース図は9エリア（ゾーン外を外周へ合算、位置不明は除外／割合の分母は全投球）。5打数未満は少数。得点圏は走者の推定値・不明は除外。打点未収録、犠打／犠飛を区別できない場合の出塁率は「—」。通算は現在の検索条件内。球種分類はID東都準拠。</p></details>
+      {rows.some(r=>!['右','左'].includes(r.pitcherThrows))&&<p className="bp-missing">投手左右不明：{rows.filter(r=>!['右','左'].includes(r.pitcherThrows)).length}球（左右の図表から除外）</p>}
+    </article>;
 }

@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const dataImports = sqliteTable("data_imports", {
   id: text("id").primaryKey(),
@@ -35,3 +35,9 @@ export const trackmanPushFiles = sqliteTable("trackman_push_files", {
   fingerprint: text("fingerprint"),
   completedAt: integer("completed_at").notNull(),
 });
+
+export const featureDailyViews = sqliteTable("feature_daily_views", {
+  day: text("day").notNull(),
+  feature: text("feature").notNull(),
+  views: integer("views").notNull().default(0),
+}, (table) => [primaryKey({ columns: [table.day, table.feature] })]);
