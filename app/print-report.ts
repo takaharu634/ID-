@@ -13,9 +13,10 @@ export async function printReport(selector: string, kind: string, mode = 'single
   const dialog = document.createElement('dialog');
   dialog.className = 'report-preview';
   dialog.setAttribute('aria-label', '印刷プレビュー');
-  dialog.innerHTML = `<div class="report-preview-toolbar"><div><h2>印刷プレビュー</h2><p class="report-preview-meta">A4${layout.label}・余白7mm</p></div><div class="report-preview-actions"><label>表示倍率 <select aria-label="プレビュー表示倍率"><option value="fit">画面に合わせる</option><option value="1">100%</option></select></label><button type="button" data-action="print" disabled>印刷／PDF保存</button><button type="button" data-action="close">戻る</button></div></div><p class="report-preview-status" role="status" aria-live="polite">資料とチャートを準備しています…</p><p class="report-preview-settings">印刷設定：A4・${layout.label}・倍率100%・ヘッダーとフッターをオフ。PDF保存は印刷画面の送信先で選べます。</p><div class="report-preview-viewport"><div class="report-preview-scaled"><iframe title="印刷する資料" sandbox="allow-same-origin allow-modals"></iframe></div></div>`;
+  dialog.innerHTML = `<div class="report-preview-toolbar"><div><h2>印刷プレビュー</h2><p class="report-preview-meta">A4${layout.label}・余白7mm</p></div><div class="report-preview-actions"><label>表示倍率 <select aria-label="プレビュー表示倍率"><option value="fit">画面に合わせる</option><option value="1">100%</option></select></label><button type="button" data-action="print" disabled>印刷／PDF保存</button><button type="button" data-action="external" disabled>別タブで開く</button><button type="button" data-action="close">戻る</button></div></div><p class="report-preview-status" role="status" aria-live="polite">資料とチャートを準備しています…</p><p class="report-preview-settings">印刷設定：A4・${layout.label}・倍率100%・ヘッダーとフッターをオフ。PDF保存は印刷画面の送信先で選べます。</p><div class="report-preview-viewport"><div class="report-preview-scaled"><iframe title="印刷する資料" sandbox="allow-same-origin allow-modals"></iframe></div></div>`;
   const frame = dialog.querySelector('iframe')!;
   const printButton = dialog.querySelector<HTMLButtonElement>('[data-action="print"]')!;
+  const externalButton = dialog.querySelector<HTMLButtonElement>('[data-action="external"]')!;
   const closeButton = dialog.querySelector<HTMLButtonElement>('[data-action="close"]')!;
   const status = dialog.querySelector<HTMLElement>('.report-preview-status')!;
   const meta = dialog.querySelector<HTMLElement>('.report-preview-meta')!;
@@ -151,6 +152,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
     const validate = () => {
       const issues = inspectPrintDocument(doc);
       printButton.disabled = issues.length > 0;
+      externalButton.disabled = issues.length > 0;
       status.dataset.state = issues.length ? 'warning' : 'ready';
       status.textContent = issues.length
         ? `${issues.join(' ／ ')}。戻って対象や条件を調整してください。見切れを防ぐため印刷を停止しています。`
@@ -163,6 +165,29 @@ export async function printReport(selector: string, kind: string, mode = 'single
       if (!validate()) return;
       try { frame.contentWindow!.focus(); frame.contentWindow!.print(); }
       catch { status.textContent = '印刷画面を開けませんでした。ブラウザで開き直して、もう一度お試しください。'; }
+    };
+    // Safari on iOS (particularly standalone/PWA) can return from iframe.print()
+    // without showing native print UI. Provide a user-activated top-level document.
+    externalButton.onclick = () => {
+      if (!validate()) return;
+      const popup = window.open('about:blank', '_blank');
+      if (!popup) {
+        status.dataset.state = 'warning';
+        status.textContent = '別タブを開けませんでした。ブラウザのポップアップ設定を確認するか、Safariでこのページを開き直してください。';
+        return;
+      }
+      try {
+        popup.document.open();
+        popup.document.write('<!doctype html>\n' + doc.documentElement.outerHTML);
+        popup.document.close();
+        popup.opener = null;
+        popup.focus();
+        status.textContent = '資料を別タブで開きました。そちらのブラウザの共有メニューから「プリント」を選択してください。';
+      } catch {
+        popup.close();
+        status.dataset.state = 'warning';
+        status.textContent = '資料を別タブで開けませんでした。Safariでページを開き直してお試しください。';
+      }
     };
     frame.contentWindow!.addEventListener('afterprint', () => { if (!disposed) printButton.focus(); });
   } catch (error) {
@@ -178,6 +203,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
         cleanup();
       }
       printButton.disabled = true;
+      externalButton.disabled = true;
     }
   }
 }
