@@ -1,13 +1,15 @@
 .report-preview { box-sizing:border-box; position:fixed; inset:0; width:calc(100vw - 32px); max-width:1440px; height:calc(100dvh - 32px); max-height:none; margin:auto; border:1px solid #a9bbbb; border-radius:12px; padding:0; background:#eef2f2; color:#172327; box-shadow:0 20px 70px #0005; }
 .report-preview[open] { display:flex; flex-direction:column; }
 .report-preview::backdrop { background:#0d2329b3; }
-.report-preview-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 20px; background:white; border-bottom:1px solid #d2dddd; }
+.report-preview-toolbar { flex:none; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 20px; background:white; border-bottom:1px solid #d2dddd; }
 .report-preview-toolbar h2 { margin:0 0 4px; font-size:20px; }
 .report-preview-meta { max-width:780px; margin:0; font-size:14px; line-height:1.5; overflow-wrap:anywhere; }
 .report-preview-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; flex-shrink:0; }
 .report-preview-actions label { display:flex; align-items:center; gap:6px; font-size:14px; }
-.report-preview-actions :is(button,select) { min-height:42px; padding:8px 12px; border:1px solid #a6b8b9; border-radius:6px; background:white; color:#173f44; font:inherit; font-size:14px; cursor:pointer; }
-.report-preview-actions button[data-action=print] { background:#173f44; color:white; border-color:#173f44; font-weight:700; }
+.report-preview-actions :is(button,select,a) { box-sizing:border-box; min-height:42px; padding:8px 12px; border:1px solid #a6b8b9; border-radius:6px; background:white; color:#173f44; font:inherit; font-size:14px; cursor:pointer; }
+.report-preview-actions a { display:inline-flex; align-items:center; text-decoration:none; }
+.report-preview-actions [hidden] { display:none!important; }
+.report-preview-actions :is([data-action=pdf],[data-action=download]) { background:#173f44; color:white; border-color:#173f44; font-weight:700; }
 .report-preview-actions button:disabled { opacity:.45; cursor:not-allowed; }
 .report-preview :focus-visible { outline:3px solid #be4d32; outline-offset:2px; }
 .report-preview-status { flex:none; margin:12px 20px 4px; padding:10px 12px; border-left:4px solid #317b65; background:#e1f1e9; font-size:14px; line-height:1.5; }

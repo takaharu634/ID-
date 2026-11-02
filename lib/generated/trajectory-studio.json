@@ -1,12 +1,12 @@
 {
-  "source": "ID東都 投球軌道スタジオ v3",
+  "source": "ID東都 投球軌道表示改善 2026-10-02",
   "sourceCommit": "0003a93c7e4f373f4265d312ce748e4fb1adc0ba",
   "seasons": {
     "2026-fall": {
       "label": "2026秋",
-      "pitches": 4451,
-      "pitchers": 46,
-      "lastDate": "2026-09-25"
+      "pitches": 10728,
+      "pitchers": 56,
+      "lastDate": "2026-10-22"
     },
     "2026-spring": {
       "label": "2026春",
@@ -20,5 +20,6 @@
       "pitchers": 56,
       "lastDate": "2025-10-24"
     }
-  }
+  },
+  "renderRevision": "5c9f0717e9829735"
 }

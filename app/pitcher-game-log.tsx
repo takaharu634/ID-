@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import type { Row } from "../lib/dataset-types";
 import { buildPitcherGameLog, fastestPitchContext } from "../lib/pitcher-game-log";
 
-const number = (value: number | null) => value === null ? "—" : value.toFixed(1);
+const number = (value: number | null, digits = 1) => value === null ? "—" : value.toFixed(digits);
 
 export default function PitcherGameLog({ pitches, allPitches, games, pitcher }: { pitches: Row[]; allPitches: Row[]; games: Row[]; pitcher?: Row }) {
   const appearances = useMemo(() => buildPitcherGameLog(pitches, games, pitcher?.id ?? "", allPitches), [pitches, allPitches, games, pitcher?.id]);
@@ -20,10 +20,22 @@ export default function PitcherGameLog({ pitches, allPitches, games, pitcher }: 
         <span className="pitcher-game-toggle" aria-hidden="true">＋</span>
       </summary>
       <div className="pitcher-game-detail">
-        <div className="table-scroll"><table className="data-table pitcher-game-table">
+        <div className="table-scroll" role="region" aria-label={`${game.date} 球種別集計`} tabIndex={0}><table className="data-table pitcher-game-table">
           <caption>{game.date} 対{game.opponent} 球種別</caption>
-          <thead><tr><th scope="col">球種</th><th scope="col">球数</th><th scope="col">平均球速<small>km/h</small></th><th scope="col">最高球速<small>km/h</small></th><th scope="col">縦変化<small>cm</small></th><th scope="col">横変化<small>cm</small></th></tr></thead>
-          <tbody>{game.arsenal.map((row) => <tr key={row.pitchType}><th scope="row">{row.pitchType}</th><td>{row.pitches}</td><td>{number(row.avgVelocity)}</td><td>{number(row.maxVelocity)}</td><td>{number(row.avgIvb)}</td><td>{number(row.avgHb)}</td></tr>)}</tbody>
+          <thead><tr>
+            <th scope="col">球種</th><th scope="col">球数</th>
+            <th scope="col">平均球速<small>km/h</small></th><th scope="col">最高球速<small>km/h</small></th>
+            <th scope="col">平均回転数<small>rpm</small></th><th scope="col">最高回転数<small>rpm</small></th>
+            <th scope="col">平均縦変化<small>cm</small></th><th scope="col">最大縦変化<small>cm</small></th>
+            <th scope="col">平均横変化<small>cm</small></th><th scope="col">最大横変化<small>cm</small></th>
+            <th scope="col">平均リリース高<small>cm</small></th><th scope="col">平均エクステンション<small>cm</small></th><th scope="col">平均リリースサイド<small>cm</small></th>
+          </tr></thead>
+          <tbody>{game.arsenal.map((row) => <tr key={row.pitchType}>
+            <th scope="row">{row.pitchType}</th><td>{row.pitches}</td><td>{number(row.avgVelocity)}</td><td>{number(row.maxVelocity)}</td>
+            <td>{number(row.avgSpin, 0)}</td><td>{number(row.maxSpin, 0)}</td>
+            <td>{number(row.avgIvb)}</td><td>{number(row.maxIvb)}</td><td>{number(row.avgHb)}</td><td>{number(row.maxHb)}</td>
+            <td>{number(row.avgReleaseHeight)}</td><td>{number(row.avgExtension)}</td><td>{number(row.avgReleaseSide)}</td>
+          </tr>)}</tbody>
         </table></div>
         <div className="pitcher-game-fastest"><h3>最高球速の投球{game.fastest.length > 1 && <span>同速 {game.fastest.length}球</span>}</h3>
           {game.fastest.length ? <ul>{game.fastest.map((pitch, i) => <li key={`${pitch.id}-${i}`}>{fastestPitchContext(pitch)}</li>)}</ul> : <p>球速の計測データがありません。</p>}

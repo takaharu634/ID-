@@ -4,9 +4,9 @@
   const rounded=value=>Math.round(value*100)/100;
   const sign=view=>view==='left'?-1:1;
   const safe=(value,fallback)=>Number.isFinite(Number(value))?Number(value):fallback;
-  const normalized=settings=>({
-    side:clamp(safe(settings?.side,.5),0,2),
-    forward:clamp(safe(settings?.forward,-.1),-3,2)
+  const normalized=(settings,view)=>({
+    side:clamp(safe(settings?.side,.5),view==='catcher'?-2:0,2),
+    forward:clamp(safe(settings?.forward,-.1),-3,view==='catcher'?-.5:2)
   });
   function geometry(width,height){
     const scale=Math.max(1,Math.min((width-88)/4,(height-34)/5));
@@ -14,7 +14,7 @@
     return {scale,centerX:width/2,homeY:top+2*scale,top,bottom:top+5*scale};
   }
   function positionToPoint(settings,view,width=260,height=130){
-    const p=normalized(settings),g=geometry(width,height);
+    const p=normalized(settings,view),g=geometry(width,height);
     // +world X is the right-handed batter's side. In this top view, the
     // pitcher is above the plate, so +world X is on the screen's left.
     return {x:g.centerX-sign(view)*p.side*g.scale,y:g.homeY-p.forward*g.scale};
@@ -22,8 +22,8 @@
   function pointToPosition(point,view,width=260,height=130){
     const g=geometry(width,height);
     return {
-      side:rounded(clamp(sign(view)*(g.centerX-point.x)/g.scale,0,2)),
-      forward:rounded(clamp((g.homeY-point.y)/g.scale,-3,2))
+      side:rounded(clamp(sign(view)*(g.centerX-point.x)/g.scale,view==='catcher'?-2:0,2)),
+      forward:rounded(clamp((g.homeY-point.y)/g.scale,-3,view==='catcher'?-.5:2))
     };
   }
   // Pure helpers allow numerical checks without a browser or canvas.
@@ -34,7 +34,7 @@
     if(!ctx)throw new Error('2D canvas is unavailable.');
     const getSettings=options?.getSettings||(()=>({side:.5,forward:-.1}));
     const getView=options?.getView||(()=> 'right');
-    const isDisabled=options?.isDisabled||(()=>getView()==='catcher');
+    const isDisabled=options?.isDisabled||(()=>false);
     const onChange=options?.onChange||(()=>{});
     let width=260,height=130,activePointer=null,destroyed=false,dragOffset={x:0,y:0};
     const original={touchAction:canvas.style.touchAction,userSelect:canvas.style.userSelect,cursor:canvas.style.cursor,
@@ -54,13 +54,13 @@
       if(canvas.height!==backingHeight)canvas.height=backingHeight;
       ctx.setTransform(dpr,0,0,dpr,0,0);
       ctx.clearRect(0,0,width,height);
-      const g=geometry(width,height),view=getView(),disabled=!!isDisabled(),settings=normalized(getSettings());
+      const g=geometry(width,height),view=getView(),disabled=!!isDisabled(),settings=normalized(getSettings(),getView());
       const xy=(worldX,forward)=>[g.centerX-worldX*g.scale,g.homeY-forward*g.scale];
       const line=(a,b,color,width=1)=>{ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();};
       const text=(value,x,y,color='#718194',align='left')=>{ctx.fillStyle=color;ctx.font='10px NotoLocal, sans-serif';ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(value,x,y);};
       ctx.fillStyle='#f3f6fa';ctx.fillRect(0,0,width,height);
       const left=g.centerX-2*g.scale,right=g.centerX+2*g.scale;
-      if(!disabled){ctx.fillStyle='#e8efff';ctx.fillRect(view==='left'?g.centerX:left,g.top,2*g.scale,5*g.scale);}
+      if(!disabled){ctx.fillStyle='#e8efff';ctx.fillRect(view==='left'?g.centerX:left,g.top,(view==='catcher'?4:2)*g.scale,5*g.scale);}
       for(let x=-2;x<=2;x++)line(xy(x,-3),xy(x,2),x===0?'#9eb0c2':'#dce5ee',x===0?1.2:1);
       for(let z=-3;z<=2;z++)line(xy(-2,z),xy(2,z),z===0?'#9eb0c2':'#dce5ee',z===0?1.2:1);
       for(const z of [-2,-1,0,1])text(z===0?'0':(z>0?'+':'')+z+'m',right+7,g.homeY-z*g.scale);
@@ -82,7 +82,7 @@
       canvas.style.cursor=disabled?'default':activePointer!==null?'grabbing':'grab';
       canvas.setAttribute('aria-disabled',String(disabled));
       canvas.setAttribute('aria-label',disabled?'打者の立ち位置。右打者か左打者を選ぶと調整できます。':
-        `${view==='left'?'左':'右'}打者の立ち位置。ホーム中心から横${Math.round(settings.side*100)}センチ、前縁から${settings.forward<0?'捕手':'投手'}側${Math.round(Math.abs(settings.forward)*100)}センチ。ドラッグまたは矢印キーで調整。シフトと矢印キーは5センチ。`);
+        `${view==='catcher'?'捕手の目の位置':view==='left'?'左打者の立ち位置':'右打者の立ち位置'}。ホーム中心から横${Math.round(settings.side*100)}センチ、前縁から${settings.forward<0?'捕手':'投手'}側${Math.round(Math.abs(settings.forward)*100)}センチ。ドラッグまたは矢印キーで調整。シフトと矢印キーは5センチ。`);
     }
     function commit(position){onChange(position);draw();}
     function updateFromPointer(event){
@@ -110,12 +110,12 @@
     function keyDown(event){
       if(destroyed||isDisabled()||event.ctrlKey||event.metaKey||event.altKey)return;
       if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
-      event.preventDefault();const p=normalized(getSettings()),step=event.shiftKey?.05:.01;
+      event.preventDefault();const p=normalized(getSettings(),getView()),step=event.shiftKey?.05:.01;
       if(event.key==='ArrowUp')p.forward+=step;
       if(event.key==='ArrowDown')p.forward-=step;
       if(event.key==='ArrowLeft')p.side+=sign(getView())*step;
       if(event.key==='ArrowRight')p.side-=sign(getView())*step;
-      const bounded=normalized(p);commit({side:rounded(bounded.side),forward:rounded(bounded.forward)});
+      const bounded=normalized(p,getView());commit({side:rounded(bounded.side),forward:rounded(bounded.forward)});
     }
     const listeners={pointerdown:pointerDown,pointermove:pointerMove,pointerup:pointerEnd,pointercancel:pointerEnd,lostpointercapture:pointerEnd,keydown:keyDown};
     for(const [name,handler]of Object.entries(listeners))canvas.addEventListener(name,handler);

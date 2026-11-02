@@ -3,7 +3,7 @@ import { apiError, canonicalTeam, datasetInfo, findPlayers, jsonHeaders, loadPub
 
 export const runtime = "edge";
 
-const arsenalFields = ["pitchType", "pitches", "usageRate", "avgVelocity", "maxVelocity", "avgSpin", "avgIvb", "maxIvb", "avgHb", "maxHb", "avgVaa", "maxVaa", "avgExtension", "whiffRate", "cswRate", "hardHitRateAllowed", "pitchValuePer100", "stuffPlus", "locationPlus", "pitchingPlus"];
+const arsenalFields = ["pitchType", "pitches", "usageRate", "avgVelocity", "maxVelocity", "avgSpin", "avgIvb", "maxIvb", "avgHb", "maxHb", "avgVaa", "maxVaa", "avgExtension", "whiffRate", "cswRate", "hardHitRateAllowed", "pitchValuePer100"];
 
 export async function GET(request: Request) {
   const dataset = await loadPublicDataset(request);

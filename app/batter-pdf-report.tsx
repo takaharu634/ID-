@@ -3,11 +3,10 @@ import { useId, useMemo, useState, type ReactNode } from 'react';
 import { catcherGridIndex } from '../lib/catcher-view';
 import { BattedBallDirectionChart, BattedDirectionLegend } from './batted-ball-direction';
 import type { Row } from '../lib/dataset-types';
-import { BATTER_FAMILIES, batterFamily, reportAverage, reportContact, reportNineZone, reportRate, reportRisp, reportStats } from '../lib/batter-side-report';
+import { BATTER_FAMILIES, batterFamily, reportAverage, reportContact, reportNineZone, reportRate, reportRisp, reportStats, reportPlayer, reportPlayerGroups, reportOpponentSide, reportPeriod, type ReportPerspective } from '../lib/batter-side-report';
 import { printReport } from './print-report';
 
-export type BatterReportProps = { pitches: Row[]; label: string; locationPlot: (rows: Row[], scaleRows: Row[])=>ReactNode; legend: ReactNode; pitchColors?: Record<string,string> };
-const keyOf=(p:Row)=>String(p.batterId||`${p.batterTeam}:${p.batter}`);
+export type BatterReportProps = { pitches: Row[]; label: string; locationPlot: (rows: Row[], scaleRows: Row[])=>ReactNode; legend: ReactNode; pitchColors?: Record<string,string>; perspective?: ReportPerspective };
 const counts=['0-0','1-0','2-0','3-0','0-1','1-1','2-1','3-1','0-2','1-2','2-2','3-2'];
 const mixOf=(rows:Row[])=>[...new Set(rows.map(p=>p.pitchType||'不明'))].map(type=>({type,n:rows.filter(p=>(p.pitchType||'不明')===type).length})).sort((a,b)=>b.n-a.n);
 
@@ -46,21 +45,23 @@ function StatsTable({rows}:{rows:Row[]}) {
   const metrics:[string, keyof typeof all,boolean][]=[['打数','ab',false],['安打','hits',false],['本塁打','hr',false],['打点','rbi',false],['打率','avg',true],['長打率','slg',true],['出塁率','obp',true]];
   return <table className="bp-stats"><thead><tr><th scope="col">成績</th><th scope="col">通算</th><th scope="col">得点圏（推定）</th></tr></thead><tbody>{metrics.map(([name,key,rate])=><tr key={name}><th scope="row">{name}</th>{[all,risp].map((s,i)=><td key={i}>{rate?reportRate(s[key] as number|null):s[key]===null?'—':String(s[key])}</td>)}</tr>)}</tbody></table>;
 }
-export default function BatterPdfReport({pitches,label,locationPlot,legend,pitchColors={}}:BatterReportProps) {
+export default function BatterPdfReport({pitches,label,locationPlot,legend,pitchColors={},perspective='batter'}:BatterReportProps) {
   const id=useId().replace(/[^a-zA-Z0-9_-]/g,'');
-  const groups=useMemo(()=>{const map=new Map<string,Row[]>();for(const p of pitches){const key=keyOf(p);if(!map.has(key))map.set(key,[]);map.get(key)!.push(p);}return [...map.values()].sort((a,b)=>String(a[0].batterKanji||a[0].batter).localeCompare(String(b[0].batterKanji||b[0].batter),'ja'));},[pitches]);
+  const groups=useMemo(()=>reportPlayerGroups(pitches,perspective),[pitches,perspective]);
+  const keyOf=(p:Row)=>reportPlayer(p,perspective).key;
+  const isPitcher=perspective==='pitcher';
   const [selected,setSelected]=useState('');const current=groups.find(g=>keyOf(g[0])===selected)||groups[0];
-  return <section className="bs-report bp-report" id={`bp-${id}`}><div className="bs-actions"><label>表示する選手 <select value={current?keyOf(current[0]):''} onChange={e=>setSelected(e.target.value)} disabled={!groups.length}>{!groups.length&&<option value="">対象なし</option>}{groups.map(g=><option key={keyOf(g[0])} value={keyOf(g[0])}>{g[0].batterKanji||g[0].batter}（{g[0].batterTeam}）</option>)}</select></label><button className="secondary-button" disabled={!current} onClick={()=>printReport(`#bp-${id}`,'batter-side')}>この選手をA4横で印刷</button></div>
-    {!current?<p>対象データがありません。選手・期間・検索条件を確認してください。</p>:<BatterPdfPage rows={current} label={label} locationPlot={locationPlot} legend={legend} pitchColors={pitchColors}/>}
+  return <section className="bs-report bp-report" id={`bp-${id}`}><div className="bs-actions"><label>{isPitcher?'表示する投手':'表示する選手'} <select value={current?keyOf(current[0]):''} onChange={e=>setSelected(e.target.value)} disabled={!groups.length}>{!groups.length&&<option value="">対象なし</option>}{groups.map(g=><option key={keyOf(g[0])} value={keyOf(g[0])}>{reportPlayer(g[0],perspective).name}（{reportPlayer(g[0],perspective).team}）</option>)}</select></label><button className="secondary-button" disabled={!current} onClick={()=>printReport(`#bp-${id}`,'batter-side')}>{isPitcher?'この投手をA4横で印刷':'この選手をA4横で印刷'}</button></div>
+    {!current?<p>対象データがありません。選手・期間・検索条件を確認してください。</p>:<BatterPdfPage perspective={perspective} rows={current} label={label} locationPlot={locationPlot} legend={legend} pitchColors={pitchColors}/>}
   </section>;
 }
 
-export function BatterPdfPage({rows,label,locationPlot,legend,pitchColors={}}: Omit<BatterReportProps,'pitches'> & {rows:Row[]}) {
+export function BatterPdfPage({rows,label,locationPlot,legend,pitchColors={},perspective='batter'}: Omit<BatterReportProps,'pitches'> & {rows:Row[]}) {
   if (!rows.length) return null;
-  const p=rows[0],dates=rows.map(r=>String(r.date)).sort();
-  return <article className="bs-sheet bp-sheet"><header className="bs-heading bp-heading"><div><h2>{p.batterKanji||p.batter}</h2><span>{p.batterTeam}・{p.batterSide}打</span></div><div><strong>左右別投球分析（打者）</strong><span>収録期間 {dates[0]}〜{dates[dates.length-1]}・{rows.length}球</span><span>{label}</span></div></header>
-      <div className="bp-halves">{['右','左'].map(side=>{const subset=rows.filter(r=>r.pitcherThrows===side);return <section className="bp-half" key={side}><h3>対{side}投手</h3><div className="bp-top"><section><h4>投球結果</h4>{locationPlot(subset,rows)}</section><section><h4>9エリア別打率</h4><NineMap rows={subset}/></section><section><h4>9エリア別投球割合</h4><NineMap rows={subset} frequency/></section></div><div className="bp-middle"><section><h4>打球方向・距離</h4><Spray rows={subset}/></section><FamilyTable rows={subset}/><PitchMix rows={subset} colors={pitchColors}/></div><div className="bp-bottom"><section><h4>カウント別球種（B−S）</h4><CountChart rows={subset} colors={pitchColors}/></section><StatsTable rows={subset}/></div><p className="bp-missing">位置不明 {subset.filter(r=>reportNineZone(r)===null).length}球・走者不明 {subset.filter(r=>!/^[0-7]$/.test(String(r.runnerStateCode))).length}球・その他球種 {subset.filter(r=>batterFamily(r.pitchType)==='その他').length}球</p></section>;})}</div>
+  const p=reportPlayer(rows[0],perspective),isPitcher=perspective==='pitcher',opponent=isPitcher?'打者':'投手';
+  return <article className="bs-sheet bp-sheet"><header className="bs-heading bp-heading"><div><h2>{p.name}</h2><span>{p.team}・{p.side}{isPitcher?'投':'打'}</span></div><div><strong>{isPitcher?'左右別打者分析（投手）':'左右別投球分析（打者）'}</strong><span>収録期間 {reportPeriod(rows)}・{rows.length}球</span><span>{label}</span></div></header>
+      <div className="bp-halves">{['右','左'].map(side=>{const subset=rows.filter(r=>reportOpponentSide(r,perspective)===side);return <section className="bp-half" key={side}><h3>対{side}{opponent}</h3><div className="bp-top"><section><h4>投球結果</h4>{locationPlot(subset,rows)}</section><section><h4>9エリア別打率</h4><NineMap rows={subset}/></section><section><h4>9エリア別投球割合</h4><NineMap rows={subset} frequency/></section></div><div className="bp-middle"><section><h4>打球方向・距離</h4><Spray rows={subset}/></section><FamilyTable rows={subset}/><PitchMix rows={subset} colors={pitchColors}/></div><div className="bp-bottom"><section><h4>カウント別球種（B−S）</h4><CountChart rows={subset} colors={pitchColors}/></section><StatsTable rows={subset}/></div><p className="bp-missing">位置不明 {subset.filter(r=>reportNineZone(r)===null).length}球・走者不明 {subset.filter(r=>!/^[0-7]$/.test(String(r.runnerStateCode))).length}球・その他球種 {subset.filter(r=>batterFamily(r.pitchType)==='その他').length}球</p></section>;})}</div>
       <div className="bs-key bp-key">{legend}<BattedDirectionLegend/></div><details className="chart-definition bp-definitions"><summary>集計方法</summary><p>括弧内は打数−安打。犠打・犠飛は打数から除外、失策は含む。コース図は9エリア（ゾーン外を外周へ合算、位置不明は除外／割合の分母は全投球）。5打数未満は少数。得点圏は走者の推定値・不明は除外。打点未収録、犠打／犠飛を区別できない場合の出塁率は「—」。通算は現在の検索条件内。球種分類はID東都準拠。</p></details>
-      {rows.some(r=>!['右','左'].includes(r.pitcherThrows))&&<p className="bp-missing">投手左右不明：{rows.filter(r=>!['右','左'].includes(r.pitcherThrows)).length}球（左右の図表から除外）</p>}
+      {rows.some(r=>!['右','左'].includes(reportOpponentSide(r,perspective)))&&<p className="bp-missing">{opponent}左右不明：{rows.filter(r=>!['右','左'].includes(reportOpponentSide(r,perspective))).length}球（左右の図表から除外）</p>}
     </article>;
 }

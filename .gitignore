@@ -54,3 +54,4 @@ next-env.d.ts
 
 # Temporary component bundles from rendering tests
 .catcher-test-*/
+.batting-render-*/

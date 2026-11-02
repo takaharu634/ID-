@@ -4,8 +4,25 @@ import {csvRows,encodeCsv,mergeImport,detectSeason,decodeUtf8} from '../lib/impo
 import {prepareImport} from '../server/import-service.mjs';
 import {readHead,commitStage,restoreSnapshot,stageImport,sha256} from '../server/import-store.mjs';
 import {buildDatasetFromCsv} from '../lib/csv-analytics.js';
+import {readFile} from 'node:fs/promises';
 export const sample=(overrides={})=>({PitchNo:'1',Date:'2026-09-01',Pitcher:'Test, Pitcher',PitcherId:'1',PitcherTeam:'CHU_UNI',PitcherThrows:'Right',Batter:'Test, Batter',BatterId:'2',BatterTeam:'TOY_UNI',BatterSide:'Right',TaggedPitchType:'Fastball',AutoPitchType:'Fastball',RelSpeed:'145',PitchCall:'StrikeSwinging',PitchUID:'p1',GameUID:'g1',HomeTeam:'CHU_UNI',AwayTeam:'TOY_UNI',Inning:'1','Top/Bottom':'Top',PlayResult:'Undefined',...overrides});
 const csv=(rows)=>encodeCsv(Object.keys(rows[0]),rows);
+test('Matoba confirmed EV error is excluded in historical data and future imports; Miyashita is retained',async()=>{
+  const raw=csvRows(await readFile(new URL('../data/raw/season-2025-fall.csv',import.meta.url),'utf8')).rows;
+  const bad=raw.find(r=>r.PitchUID==='79e2edc0-afb2-11f0-806d-4576010de888');
+  const good=raw.find(r=>r.PitchUID==='ca55dc80-af04-11f0-b491-c1bbf64cc538');
+  assert.equal(bad.ExitSpeed,'191.05138');
+  const rebuilt=buildDatasetFromCsv(csv([bad,good]),{season:'2025年秋季'});
+  assert.equal(rebuilt.pitches.length,2);
+  assert.equal(rebuilt.pitches.find(p=>p.id===bad.PitchUID).exitVelocity,null);
+  assert.equal(rebuilt.pitches.find(p=>p.id===bad.PitchUID).playResult,'アウト');
+  assert.equal(rebuilt.pitches.find(p=>p.id===good.PitchUID).exitVelocity,180);
+  const published=JSON.parse(await readFile(new URL('../public/data/season-2025-fall.json',import.meta.url),'utf8'));
+  const p=published.pitches.find(p=>p.id===bad.PitchUID);
+  assert.equal(p.exitVelocity,null);
+  assert.equal(published.batters.find(b=>b.id===p.batterId).maxExitVelocity,165.5);
+  assert.equal(published.pitches.find(p=>p.id===good.PitchUID).exitVelocity,180);
+});
 class Bucket {
   map=new Map(); failure=''; seq=0;
   async get(key){const v=this.map.get(key);return !v?null:{etag:v.etag,text:async()=>v.text,json:async()=>JSON.parse(v.text)};}

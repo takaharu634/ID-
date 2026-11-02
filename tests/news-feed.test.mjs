@@ -22,6 +22,7 @@ test('NEWS renders the verified Toyo report with separate fact and analysis', as
     const result = await build({
       stdin: { contents: contents + '\nexport { NewsView };', resolveDir: path.resolve('app'), loader: 'tsx' },
       bundle: true, write: false, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic', logLevel: 'silent',
+      loader: { '.css': 'empty' },
     });
     const entry = path.join(directory, 'news.mjs');
     await writeFile(entry, result.outputFiles[0].text);
@@ -48,5 +49,17 @@ test('latest NEWS links the verified Aoyama player master and remains unique', a
   assert.equal(item.playerKanji, '森澤 拓海');
   assert.equal(item.playerId, 'id:1000325040|青山学院大学');
   assert.equal(item.sourceUrl, 'https://aoyamasports.conohawing.com/?p=12520');
+  assert.equal(feed.filter(row => row.sourceUrl === item.sourceUrl).length, 1);
+});
+
+test('latest NEWS links the autumn MVP to the verified Asia player master', async () => {
+  const feed = JSON.parse(await readFile('public/data/news_feed.json', 'utf8'));
+  const item = feed.find(row => row.id === 'asia-yamasato-autumn-mvp-2026-10-24');
+  assert.ok(item);
+  assert.equal(item.publishedAt, '2026-10-24');
+  assert.equal(item.playerKanji, '山里 宝');
+  assert.equal(item.playerId, 'id:1000544882|亜細亜大学');
+  assert.equal(item.sourceUrl, 'https://www.daily.co.jp/baseball/2026/10/24/0020961183.shtml');
+  assert.equal(item.thumbnailUrl, undefined);
   assert.equal(feed.filter(row => row.sourceUrl === item.sourceUrl).length, 1);
 });

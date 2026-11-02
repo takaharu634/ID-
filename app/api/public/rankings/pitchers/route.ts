@@ -7,7 +7,7 @@ const metricFields: Record<string, string> = {
   avgVelocity: "平均球速", maxVelocity: "最高球速", avgSpin: "平均回転数", avgIvb: "平均IVB", avgHb: "平均横変化量",
   maxIvb: "最大縦変化量", maxHb: "最大横変化量", maxVaa: "最大進入角",
   avgVaa: "平均VAA", avgExtension: "平均Extension", whiffRate: "空振り率", cswRate: "CSW%",
-  pitchValuePer100: "100球得点価値", stuffPlus: "球質スコア", locationPlus: "コーススコア", pitchingPlus: "総合投球スコア",
+  pitchValuePer100: "100球得点価値",
 };
 
 const unitFor = (metric: string) => metric.includes("Velocity") ? "km/h" : metric === "avgSpin" ? "rpm" : ["avgIvb", "maxIvb", "avgHb", "maxHb", "avgExtension"].includes(metric) ? "cm" : ["avgVaa", "maxVaa"].includes(metric) ? "degrees" : ["whiffRate", "cswRate"].includes(metric) ? "0-1" : "index";

@@ -3,12 +3,14 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { adjustedCatcher, buildUmpireAnalysis, displayX, edgeCrossing, heatCells, isTaken, localProbability, region, sampleLabel, summarize, UMPIRE_ASSIGNMENTS, type Take } from '../lib/umpire-analytics.ts';
 const data=JSON.parse(readFileSync(new URL('../public/data/season-2026-fall.json',import.meta.url),'utf8'));
+const memoIds=new Set<string>(UMPIRE_ASSIGNMENTS.map(([id])=>id));
+const memoData={...data,games:data.games.filter((g:Record<string,string>)=>memoIds.has(g.id)),pitches:data.pitches.filter((p:Take)=>memoIds.has(p.gameId))};
 const pitch=(overrides:Partial<Take>={}):Take=>({id:'p',gameId:'g',plateX:.1,plateZ:.7,batterSide:'右',balls:0,strikes:0,result:'ボール',actual:0,expected:.5,umpire:'A',...overrides});
-test('all fourteen imported games match the supplied umpire memos by ID, date and teams',()=>{
- const a=buildUmpireAnalysis(data);assert.equal(a.assignments.size,14);assert.equal(a.mismatches.length,0);assert.equal(a.unknownGames.length,0);
+test('recorded game-ID memos match by ID, date and teams independently of later imports',()=>{
+ const a=buildUmpireAnalysis(memoData);assert.equal(a.assignments.size,UMPIRE_ASSIGNMENTS.length);assert.equal(a.mismatches.length,0);assert.equal(a.unknownGames.length,0);
  for(const [id,,,,name] of UMPIRE_ASSIGNMENTS)assert.equal(a.assignments.get(id),name);
- const changed=structuredClone(data); changed.games[0].date='2026-10-01';changed.games.push({id:'future',date:'2026-09-18',homeTeam:'中央大学',awayTeam:'青山学院大学'});
- const b=buildUmpireAnalysis(changed);assert.equal(b.assignments.size,13);assert.equal(b.unknownGames.length,2);
+ const changed=structuredClone(memoData); changed.games[0].date='2026-10-01';changed.games.push({id:'future',date:'2026-09-18',homeTeam:'中央大学',awayTeam:'青山学院大学'});
+ const b=buildUmpireAnalysis(changed);assert.equal(b.assignments.size,UMPIRE_ASSIGNMENTS.length-1);assert.equal(b.unknownGames.length,2);
  const spring=JSON.parse(readFileSync(new URL('../public/data/season-2026-spring.json',import.meta.url),'utf8'));assert.equal(buildUmpireAnalysis(spring).assignments.size,0);
 });
 test('September 18 and 24 memos follow the three CSV game slots',()=>{
@@ -25,23 +27,55 @@ test('September 18 and 24 memos follow the three CSV game slots',()=>{
   assert.ok(g,`${date} ${home} ${away}`);assert.equal(a.assignments.get(g.id),name);
  }
 });
+test('October memos match each exact date and matchup in the imported season',()=>{
+ const a=buildUmpireAnalysis(data);
+ for(const [date,teamA,teamB,name] of [
+  ['2026-10-01','青山学院大学','亜細亜大学','中野'],
+  ['2026-10-01','國學院大學','東洋大学','吉岡'],
+  ['2026-10-01','中央大学','立正大学','阿竹'],
+  ['2026-10-02','青山学院大学','亜細亜大学','寺尾'],
+  ['2026-10-08','國學院大學','東洋大学','菅原'],
+  ['2026-10-08','中央大学','立正大学','江尻'],
+  ['2026-10-09','國學院大學','東洋大学','寺尾'],
+  ['2026-10-13','中央大学','東洋大学','川合'],
+  ['2026-10-13','亜細亜大学','國學院大學','佐々木'],
+  ['2026-10-13','青山学院大学','立正大学','吉岡'],
+  ['2026-10-14','中央大学','東洋大学','富田'],
+  ['2026-10-14','亜細亜大学','國學院大學','石井'],
+  ['2026-10-14','青山学院大学','立正大学','坂本'],
+ ]) {
+  const matches=data.games.filter((g:Record<string,string>)=>g.date===date&&[g.homeTeam,g.awayTeam].includes(teamA)&&[g.homeTeam,g.awayTeam].includes(teamB));
+  assert.equal(matches.length,1,`${date} ${teamA} ${teamB}`);
+  assert.equal(a.assignments.get(matches[0].id),name);
+ }
+ assert.equal(a.assignments.size,29);assert.deepEqual(a.mismatches,[]);assert.equal(a.unknownGames.length,8);
+});
 test('third-game memo waits for one exact match and refuses other dates, reversed teams and duplicates',()=>{
- const clone=structuredClone(data);clone.pitches=[];
+ const clone=structuredClone(memoData);clone.pitches=[];
  const game={id:'third-game',date:'2026-09-25',homeTeam:'國學院大學',awayTeam:'中央大学'};
- assert.equal(buildUmpireAnalysis(clone).assignments.size,14);
+ assert.equal(buildUmpireAnalysis(clone).assignments.size,UMPIRE_ASSIGNMENTS.length);
  clone.games.push(game);
- const matched=buildUmpireAnalysis(clone);assert.equal(matched.assignments.get(game.id),'福壽');assert.equal(matched.assignments.size,15);
+ const matched=buildUmpireAnalysis(clone);assert.equal(matched.assignments.get(game.id),'福壽');assert.equal(matched.assignments.size,UMPIRE_ASSIGNMENTS.length+1);
  game.date='2026-09-26';assert.equal(buildUmpireAnalysis(clone).assignments.has(game.id),false);
  game.date='2026-09-25';game.homeTeam='中央大学';game.awayTeam='國學院大學';assert.equal(buildUmpireAnalysis(clone).assignments.has(game.id),false);
  game.homeTeam='國學院大學';game.awayTeam='中央大学';clone.games.push({...game,id:'duplicate'});
  const ambiguous=buildUmpireAnalysis(clone);assert.equal(ambiguous.assignments.has(game.id),false);assert.equal(ambiguous.assignments.has('duplicate'),false);assert.deepEqual(ambiguous.mismatches,['福壽']);
+});
+test('October 15 memo waits for the Chuo/Toyo game and supports either home designation',()=>{
+ for(const [homeTeam,awayTeam] of [['中央大学','東洋大学'],['東洋大学','中央大学']]) {
+  const game={id:'oct15',date:'2026-10-15',homeTeam,awayTeam};
+  const fixture={...data,games:[game],pitches:[]};
+  assert.equal(buildUmpireAnalysis(fixture).assignments.get(game.id),'吉田');
+  game.date='2026-10-16';assert.equal(buildUmpireAnalysis(fixture).assignments.size,0);
+  game.date='2026-10-15';game.awayTeam='立正大学';assert.equal(buildUmpireAnalysis(fixture).assignments.size,0);
+ }
 });
 test('real take counts match original; input remains immutable; every valid comparison finite',()=>{
  const before=JSON.stringify(data),a=buildUmpireAnalysis(data);
  assert.equal(a.takes.length,data.pitches.filter((p:Take)=>isTaken(p)&&typeof p.plateX==='number'&&typeof p.plateZ==='number').length);
  assert.equal(JSON.stringify(data),before);assert.ok(a.takes.filter(p=>p.expected!==null).length>100);
  for(const p of a.takes)if(p.expected!==null)assert.ok(p.expected>=0&&p.expected<=1);
- const all=summarize(a.takes);const groups=[...new Set(a.assignments.values())].map(n=>summarize(a.takes.filter(p=>p.umpire===n)));
+ const all=summarize(a.takes.filter(p=>p.umpire));const groups=[...new Set(a.assignments.values())].map(n=>summarize(a.takes.filter(p=>p.umpire===n)));
  assert.equal(groups.reduce((s,g)=>s+g.n,0),all.n);assert.ok(Math.abs(groups.reduce((s,g)=>s+(g.extra??0),0)-all.extra!)<1e-8);
 });
 test('own game outcomes cannot affect its expected probability',()=>{

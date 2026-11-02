@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { gameScoreboard } from '../lib/game-scoreboard.ts';
 const game={id:'g',awayTeam:'A',homeTeam:'B',awayRuns:2,homeRuns:0};
+test('HBP takes precedence over Walk and legacy Waik is a walk',()=>{
+ const base={gameId:'g',batterTeam:'A',inning:1,runsScored:0};
+ const result=gameScoreboard(game,[{...base,id:'h',result:'死球',korbb:'Walk'},{...base,id:'w',result:'ボール',korbb:'Waik'}]).teams[0];
+ assert.equal(result.walks,1);assert.equal(result.hbp,1);assert.equal(result.freePasses,2);
+});
 test('counts terminal hits and walks once, includes HBP, and does not invent fielding errors or unplayed innings',()=>{
  const base={gameId:'g',batterTeam:'A',inning:1,runsScored:0};
  const hit={...base,id:'hit',playResult:'二塁打',runsScored:2};

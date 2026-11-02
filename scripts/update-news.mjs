@@ -8,7 +8,7 @@ const datasetPath = path.join(root, "public/data/initial-data.json");
 
 const required = ["team", "publishedAt", "category", "headline", "fact", "savant", "sourceName", "sourceUrl"];
 const teams = new Set(["中央大学", "青山学院大学", "國學院大學", "東洋大学", "亜細亜大学", "立正大学"]);
-const categories = new Set(["速報", "インタビュー", "TRAINING WATCH", "本人SNS", "公式", "試合", "進路"]);
+const categories = new Set(["速報", "インタビュー", "TRAINING WATCH", "本人SNS", "公式", "試合", "特集", "進路"]);
 const normalize = (value) => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[\s,，.．・'’\-ー_]/g, "");
 const slug = (value) => normalize(value).replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9fff]/g, "").slice(0, 36);
 

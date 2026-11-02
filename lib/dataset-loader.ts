@@ -1,11 +1,15 @@
-import { applyPitchQuality } from './pitch-quality.mjs';
+import { repairLegacyOutcomes } from './repair-legacy-outcomes.mjs';
 import { unpackDataset } from './dataset-transport.js';
 import type { Dataset } from './dataset-types';
 import { publicOfflineStore, publicDataHash, validatePublicPair, validatePublicSummary, validatePublicSpin } from './public-offline.mjs';
 import { setSavedPublicDataNotice } from './public-data-notice.ts';
 import { repairLegacyAggregates } from './repair-legacy-aggregates.ts';
+import { normalizeGameDates } from './game-dates.ts';
+import { useSyncExternalStore } from 'react';
+import { withoutEstimatedPerformance } from './retired-performance.ts';
+import { applyFramingAdjustment } from './framing-adjustment.mjs';
 
-const normalize = <T>(data: T): T => applyPitchQuality(repairLegacyAggregates(data));
+const normalize = <T>(data: T): T => applyFramingAdjustment(withoutEstimatedPerformance(normalizeGameDates(repairLegacyAggregates(repairLegacyOutcomes(data)))));
 
 /** Only an explicit empty response means there is no uploaded dataset. */
 export async function loadUploadedDataset(fetcher: typeof fetch = fetch): Promise<Dataset | null> {
@@ -23,6 +27,9 @@ export async function loadUploadedDataset(fetcher: typeof fetch = fetch): Promis
 
 /** One shared request and parsed object per static dataset, across all views. */
 export function createDatasetLoader(fetcher: typeof fetch = fetch, current = false, offline = publicOfflineStore) {
+  let active = true;
+  const isActive = () => active;
+  const setNotice = (season: string, savedAt: number | null) => { if (active) setSavedPublicDataNotice(season, savedAt); };
   const cache = new Map<string, Promise<unknown>>();
   type Pair = { summary: unknown; spin?: unknown; legacy?: boolean };
   const pairs = new Map<string, Promise<Pair | null>>();
@@ -53,14 +60,14 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch, current = fal
         if (summaryResponse.status === 204) return null;
         const summary = await summaryResponse.json();
         validatePublicPair(season, summary, []);
-        setSavedPublicDataNotice(season, null);
+        setNotice(season, null);
         return { summary: normalize(summary), legacy: true };
       }
       if (summaryResponse.headers.get('x-dataset-season') !== season) throw new Error('取得したデータのシーズンが一致しません。');
       if (version.startsWith('legacy:')) {
         const summary = await summaryResponse.json();
         validatePublicPair(season, summary, []);
-        setSavedPublicDataNotice(season, null);
+        setNotice(season, null);
         return { summary: normalize(summary), legacy: true };
       }
       const spinResponse = await fetcher(`/api/dataset?season=${season}&format=spin`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
@@ -79,8 +86,8 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch, current = fal
       }
       validatePublicPair(season, summary, spin);
       summary = normalize(summary);
-      await offline.savePair(season, version, summary, spin);
-      setSavedPublicDataNotice(season, null);
+      if (active) await offline.savePair(season, version, summary, spin, isActive);
+      setNotice(season, null);
       return { summary, spin };
     }
     throw new Error('データの更新中です。再読み込みしてください。');
@@ -89,7 +96,7 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch, current = fal
     const existing = pairs.get(season); if (existing) return existing;
     const pending = pairFromNetwork(season).catch(async error => {
       const saved = await offline.readPair(season);
-      if (saved) { setSavedPublicDataNotice(season, saved.savedAt); return { summary: normalize(saved.summary), spin: saved.spin }; }
+      if (saved) { setNotice(season, saved.savedAt); return { summary: normalize(saved.summary), spin: saved.spin }; }
       pairs.delete(season);
       throw error;
     });
@@ -97,7 +104,7 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch, current = fal
     while (pairs.size > 6) pairs.delete(pairs.keys().next().value!);
     return pending;
   }
-  return function load<T>(url: string): Promise<T> {
+  function load<T>(url: string): Promise<T> {
     const existing = cache.get(url);
     if (existing) return existing as Promise<T>;
     const pending = (async () => {
@@ -125,12 +132,24 @@ export function createDatasetLoader(fetcher: typeof fetch = fetch, current = fal
     while (cache.size > 6) cache.delete(cache.keys().next().value!);
     return pending as Promise<T>;
   };
+  load.invalidate = () => { active = false; };
+  return load;
 }
 
 // All views, including historical comparisons and spin, share the same current snapshot.
 let currentLoader = createDatasetLoader(fetch, true);
 export const loadBundledDataset = createDatasetLoader();
-export function resetDatasetCache() { currentLoader = createDatasetLoader(fetch, true); }
+let datasetRevision = 0;
+const refreshListeners = new Set<() => void>();
+export function subscribeDatasetRefresh(listener: () => void) { refreshListeners.add(listener); return () => { refreshListeners.delete(listener); }; }
+export function getDatasetRevision() { return datasetRevision; }
+export function useDatasetRevision() { return useSyncExternalStore(subscribeDatasetRefresh, getDatasetRevision, () => 0); }
+export function resetDatasetCache() {
+  currentLoader.invalidate();
+  currentLoader = createDatasetLoader(fetch, true);
+  datasetRevision++;
+  refreshListeners.forEach(listener => listener());
+}
 export function loadStaticDataset<T>(url: string): Promise<T> { return currentLoader<T>(url); }
 
 /** Ignore older successes and failures without aborting another view's shared request. */

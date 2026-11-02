@@ -22,6 +22,7 @@ const base = { raw, summary: await fs.readFile(new URL('../public/data/season-20
 const parsed = csvRows(raw), now = '2026-09-26T09:00:00.000Z';
 const row = { ...parsed.rows.at(-1), PitchUID: randomUUID(), PitchNo: '9999' };
 const input = encodeCsv(parsed.headers, [row]);
+const expectedPitchCount = new Set(parsed.rows.map(p => p.PitchUID)).size + 1;
 const files = [{ id: 'known-file', name: 'known.csv', size: 100, modifiedTime: now }, { id: 'added-file', name: 'new.csv', size: Buffer.byteLength(input), modifiedTime: now }];
 const payload = buildPayload(base, input, now);
 
@@ -30,7 +31,7 @@ test('Apps Script engine matches existing calculations and blocks invalid CSV', 
   vm.runInContext(scriptTemplate, context);
   const value = context.TohtoImport.buildPayload(base, input, now);
   assert.deepEqual(JSON.parse(JSON.stringify(value)), payload);
-  assert.equal(JSON.parse(value.summary).pitches.length, 4135);
+  assert.equal(JSON.parse(value.summary).pitches.length, expectedPitchCount);
   assert.equal(value.report.addedRows, 1);
   assert.deepEqual(value.report.warnings.length, 0);
   assert.equal(buildPayload(base, raw, now).unchanged, true);
@@ -118,7 +119,7 @@ test('isolated D1/R2 push flow authenticates, publishes, deduplicates and restor
     const damaged = structuredClone(snapshot); damaged.objects.spin.key = 'datasets/v2/2026-spring/versions/'+id+'/spin.json';
     assert.equal((await bridge('publish', { baseEtag: null, files: plan.files, snapshot: damaged })).status, 400);
     assert.equal((await readHead(bucket, '2026-fall')).active, null);
-    const result = await value('publish', { baseEtag: null, files: plan.files, snapshot, previousSnapshot }); assert.equal(result.pitches, 4135);
+    const result = await value('publish', { baseEtag: null, files: plan.files, snapshot, previousSnapshot }); assert.equal(result.pitches, expectedPitchCount);
     const head = await readHead(bucket, '2026-fall'); assert.equal(head.versions.length, 2); assert.equal(head.active, id);
     assert.equal((await value('publish', { baseEtag: null, files: plan.files, snapshot, previousSnapshot })).id,id);
     assert.equal((await value('plan', { files: files.map(f => ({ ...f, modifiedTime: new Date().toISOString() })) })).files.length, 2);

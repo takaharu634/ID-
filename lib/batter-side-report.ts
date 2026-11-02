@@ -1,10 +1,43 @@
 import { maxValue } from './extrema.mjs';
 import type { Row } from './dataset-types';
 
+export type ReportPerspective = 'batter' | 'pitcher';
+export function reportPlayer(p: Row, perspective: ReportPerspective = 'batter') {
+  const pitcher = perspective === 'pitcher';
+  return {
+    key: String(pitcher ? p.pitcherId || `${p.pitcherTeam}:${p.pitcher}` : p.batterId || `${p.batterTeam}:${p.batter}`),
+    name: pitcher ? p.pitcherKanji || p.pitcher : p.batterKanji || p.batter,
+    team: pitcher ? p.pitcherTeam : p.batterTeam,
+    side: pitcher ? p.pitcherThrows : p.batterSide,
+  };
+}
+export function reportPlayerGroups(pitches: Row[], perspective: ReportPerspective = 'batter') {
+  const groups = new Map<string, Row[]>();
+  for (const p of pitches) {
+    const key = reportPlayer(p, perspective).key;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(p);
+  }
+  return [...groups.values()].sort((a, b) => String(reportPlayer(a[0], perspective).name).localeCompare(String(reportPlayer(b[0], perspective).name), 'ja'));
+}
+export const reportOpponentSide = (p: Row, perspective: ReportPerspective = 'batter') => perspective === 'pitcher' ? p.batterSide : p.pitcherThrows;
+
+export function reportPeriod(rows: Row[]) {
+  const dates = rows.flatMap(p => {
+    const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(String(p.date ?? '').trim());
+    if (!match) return [];
+    const [, year, month, day] = match;
+    const normalized = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const date = new Date(`${normalized}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === normalized ? [normalized] : [];
+  }).sort();
+  return dates.length ? `${dates[0]}〜${dates[dates.length - 1]}` : '不明';
+}
+
 export const BATTER_FAMILIES = ['ストレート系', '曲がる系', '落ちる系'] as const;
 export function batterFamily(type: string): string {
-  if (['ストレート', 'カットボール', 'シンカー', 'ツーシーム'].includes(type)) return BATTER_FAMILIES[0];
-  if (['スライダー', 'カーブ', 'ナックル', '特殊球'].includes(type)) return BATTER_FAMILIES[1];
+  if (['ストレート', 'シンカー', 'ツーシーム'].includes(type)) return BATTER_FAMILIES[0];
+  if (['カットボール', 'スライダー', 'カーブ', 'ナックル', '特殊球'].includes(type)) return BATTER_FAMILIES[1];
   if (['フォーク', 'スプリット', 'チェンジアップ'].includes(type)) return BATTER_FAMILIES[2];
   return 'その他';
 }
@@ -45,7 +78,7 @@ export function reportStats(rows: Row[]) {
   const ab = rows.filter(isReportAtBat);
   const hits = ab.filter(isReportHit).length;
   const totalBases = ab.reduce((n,p) => n + ({単打:1,二塁打:2,三塁打:3,本塁打:4}[p.playResult as string] ?? 0), 0);
-  const walks = rows.filter(p => ['Walk','Waik'].includes(p.korbb) || (p.balls === 3 && p.result === 'ボール')).length;
+  const walks = rows.filter(p => p.result !== '死球' && (['Walk','Waik'].includes(p.korbb) || (p.balls === 3 && p.result === 'ボール'))).length;
   const hbp = rows.filter(p => p.result === '死球').length;
   const sf = rows.filter(p => p.playResult === '犠飛').length;
   // The imported Sacrifice value does not distinguish bunts from sacrifice flies.

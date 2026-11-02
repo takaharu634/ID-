@@ -16,7 +16,7 @@ test('compiled ID東都 serves the same-origin studio and accepts its menu witho
  const mf=new Miniflare({modules,compatibilityDate:'2026-05-01',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:{ADMIN_EMAILS:'admin@example.test'},serviceBindings:{ASSETS:assets},port:0});
  try{
   const origin='http://test.local';
-  for(const file of ['index.html?embedded=1&season=2026-fall','studio_controller.js','scene.js','embedded.js','NotoSansJP.woff2']){
+  for(const file of ['index.html?embedded=1&season=2026-fall','studio_controller.js','selection.js','scene.js','baseball.js','diagnostics.js','validation.js','embedded.js','NotoSansJP.woff2']){
    const res=await mf.dispatchFetch(origin+'/trajectory-studio/'+file);assert.equal(res.status,200,file);
    assert.deepEqual(Buffer.from(await res.arrayBuffer()),await fs.readFile(root+'/public/trajectory-studio/'+file.split('?')[0]),file);
   }

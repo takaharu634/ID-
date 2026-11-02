@@ -2,24 +2,38 @@
   "version": 1,
   "folderId": "1eQhb4GYv3zlP-74BAK3g8xzkO3htUCr6",
   "season": "2026-fall",
-  "sourceFingerprint": "1eb989d9360e10d2a6d367e44fa41ad2da0c7f82c3057c9083313d914ebc0045",
-  "listingFingerprint": "005e0f2682255064cb5e5fcce250f7c071edd2ba4575de19847fc5840c9ed408",
+  "sourceFingerprint": "54e469e4b18f07d9326ffd16a787d1cc3d1bd746e1c0dcd8ab06f88e75b9c8c6",
+  "listingFingerprint": "d57514e8274c0c7f72849e23b8269a07dd634f7502fe08b6df5d9f2474cd0292",
   "summary": {
-    "batters": 101,
-    "battedBalls": 711,
+    "batters": 138,
+    "battedBalls": 1799,
     "battingValidationVersion": 1,
     "spinMethod": "nathan-2020-b-standard-air-v1",
-    "spinPitches": 4450,
-    "estimatedSpinPitches": 4054,
-    "files": 15,
-    "pitches": 4451,
-    "games": 15,
+    "spinPitches": 10715,
+    "estimatedSpinPitches": 9649,
+    "files": 37,
+    "pitches": 10728,
+    "games": 37,
     "teams": 6,
     "duplicates": 0,
     "firstDate": "2026-09-08",
-    "lastDate": "2026-09-25"
+    "lastDate": "2026-10-22"
   },
   "files": [
+    {
+      "id": "10ZFuKZH4EHxGwsDHG4J2V6FxUv02fY96",
+      "name": "20261009-JinguStadium-1.csv",
+      "modifiedTime": "2026-10-10T06:49:41.007Z",
+      "size": 254073,
+      "sha256": "aa61dc4c0b28a26e8bfc479630a972c593084900fed8c0e4544ee89352fe732c"
+    },
+    {
+      "id": "14xisj71SP4RKEGfMLxz1FPeXCBzI5AkA",
+      "name": "20261001-JinguStadium-2_unverified.csv",
+      "modifiedTime": "2026-10-03T23:51:03.109Z",
+      "size": 288476,
+      "sha256": "bf9ada0090df5cc4df2dbf010a4144e44bff1535f967316dc04bd3b221a2868c"
+    },
     {
       "id": "15apes-qGtana9tQykPAQmXD0SwzS6nXe",
       "name": "20260924-JinguStadium-1.csv",
@@ -49,11 +63,32 @@
       "sha256": "ac55b27bd0e92dd4d19d1431ab9824c0b2aa9eb1a75a9c81ebbf4f2346d89921"
     },
     {
+      "id": "199KbgNMjegAGQsNl6GgOxoTwBiRBJ1Qr",
+      "name": "20261021-JinguStadium-3.csv",
+      "modifiedTime": "2026-10-22T00:25:23.209Z",
+      "size": 474194,
+      "sha256": "b3ceb18ff87b63ef24c86ada0d6e0d1c3b5f4b27a7b8ea6b4ac94af9fdb14f6c"
+    },
+    {
+      "id": "1cfXqGxaypWE16_wCOCyZv5bKLfSkLECE",
+      "name": "20261021-JinguStadium-1_unverified.csv",
+      "modifiedTime": "2026-10-22T00:24:52.704Z",
+      "size": 283413,
+      "sha256": "7fc898ed835c20ff373defbabcd93fabc94e4bda5336e427ea5906f4ca0826c7"
+    },
+    {
       "id": "1cW4nuEMCnJDrhezsmWAHX_ygswOyvQKG",
       "name": "20260910-JinguStadium-1_unverified.csv",
       "modifiedTime": "2026-09-10T12:37:24.000Z",
       "size": 306608,
       "sha256": "efa4fc8a9248972989b6900b38150f27d07f101fa87c11a4eb60fb7947378739"
+    },
+    {
+      "id": "1cw8odbnuJYpSlmSwbyzQ7qLCPez_pVYD",
+      "name": "20261014-JinguStadium-1_unverified.csv",
+      "modifiedTime": "2026-10-15T08:06:49.801Z",
+      "size": 269965,
+      "sha256": "35ef02933986f20996049368f19fc5177f93fee52899d99587cd2557acc48ed3"
     },
     {
       "id": "1ec_l767bqijYdfiVVAHnS0Q68QUZvEAb",
@@ -63,11 +98,74 @@
       "sha256": "ab718f62b6f1e2f082186de81c2afa6825aa293a2c88e1ea8117408ee825e82b"
     },
     {
+      "id": "1EgOA9h5xF1l4ycGEm_hRuPWxYrzBTol6",
+      "name": "20261008-JinguStadium-2.csv",
+      "modifiedTime": "2026-10-10T06:51:11.060Z",
+      "size": 355440,
+      "sha256": "0143653ff48275a377885b69f080400c2bebd72cd0fce43ff802448a4b54de00"
+    },
+    {
+      "id": "1EonxwARwSaAAV3BLELOWmMLUwQ1XILFq",
+      "name": "20261002-JinguStadium-1_unverified.csv",
+      "modifiedTime": "2026-10-03T23:51:04.876Z",
+      "size": 286884,
+      "sha256": "b818e408e5e7c54b3bb83ec5342342670307977fba0c1783b975a1cd0cedc7fe"
+    },
+    {
       "id": "1fdv5dEQ0n-r0cf7em5zvubfh5d2OxPU4",
       "name": "20260924-JinguStadium-3.csv",
       "modifiedTime": "2026-09-25T12:52:03.076Z",
       "size": 314629,
       "sha256": "885d1c91a32e82f01d678b65cd981a5fd2c2ba0cb818fbce0b0da63b6db3783c"
+    },
+    {
+      "id": "1gSZik0XB8m1OK0QsYBXYc7UlXNVYR-AI",
+      "name": "20261014-JinguStadium-2_unverified.csv",
+      "modifiedTime": "2026-10-15T08:06:40.178Z",
+      "size": 312078,
+      "sha256": "3150a68e835d1ef00f8108680e8ec4fb8fef71cdf57948f5d1ec24b32efdb0de"
+    },
+    {
+      "id": "1HjHF0KsIqW70XBDwVxGncPFa8EwKdeLi",
+      "name": "20261020-JinguStadium-2_unverified.csv",
+      "modifiedTime": "2026-10-22T00:24:50.843Z",
+      "size": 281040,
+      "sha256": "ee0b7c95a52348f3943d85628f973e45b867cbf422fd0be005807ac99b49fe62"
+    },
+    {
+      "id": "1jxnPOWcBsLlwPTw6a_wStAxpQfVZ_0L2",
+      "name": "20261014-JinguStadium-3_unverified.csv",
+      "modifiedTime": "2026-10-15T08:06:40.762Z",
+      "size": 320979,
+      "sha256": "ab98e73aa015318ec6b8fcdcd618cd8e0dcabf3de105946cc8a20b440a0b6b32"
+    },
+    {
+      "id": "1JZ3aUJEBRJxyyhJjgmBBiar5O4xSF__P",
+      "name": "20261013-JinguStadium-3.csv",
+      "modifiedTime": "2026-10-15T08:06:50.806Z",
+      "size": 286760,
+      "sha256": "88df0142dec073f0da0d551d21801e4f74d3e84ebe82074df0b02053b8422793"
+    },
+    {
+      "id": "1KZclQmRfHpyN64EOTSpkNXyUzyPONoXI",
+      "name": "20261001-JinguStadium-1_unverified.csv",
+      "modifiedTime": "2026-10-03T23:51:11.965Z",
+      "size": 348033,
+      "sha256": "3118388ecb7618093c5d9a2a635b72f4b389dd81cc77248177c15dd32e668c30"
+    },
+    {
+      "id": "1l7ZC-IXprMT732r2ocuzfMxywkBVjG6Q",
+      "name": "20261022-JinguStadium-2.csv",
+      "modifiedTime": "2026-10-24T06:16:33.387Z",
+      "size": 336500,
+      "sha256": "729aa75026f93f572e55b2326555d9899d300808b1d3012a6998b122d314db0a"
+    },
+    {
+      "id": "1lnrvWerNGZ84MQf-FRA5NAwnMn8DIg0p",
+      "name": "20261013-JinguStadium-2.csv",
+      "modifiedTime": "2026-10-15T08:06:51.830Z",
+      "size": 311399,
+      "sha256": "b200f0002fed5a1f9384a74fc78a565c58366f97adfd9e4ba6420ce518dcdf17"
     },
     {
       "id": "1Mewu6gRdvIKbugGlvFovDieNoG-X1Y5I",
@@ -77,11 +175,46 @@
       "sha256": "aac736f9753e890c8dc00ba9dc0de572477cd22f3f6176ce209ad3e44a438614"
     },
     {
+      "id": "1MLhOBCQsGUneboGUMg38RuXLW12tmqkp",
+      "name": "20261008-JinguStadium-1.csv",
+      "modifiedTime": "2026-10-10T06:51:10.310Z",
+      "size": 268983,
+      "sha256": "82a6878db4283be27fa55594d11a8729d46bf7139358b7ab812722d24b5f52ab"
+    },
+    {
+      "id": "1NqMiE0blGbZ_RfANTk8rcdV9hYjJEPXG",
+      "name": "20261015-JinguStadium-1_unverified.csv",
+      "modifiedTime": "2026-10-20T00:04:09.477Z",
+      "size": 312568,
+      "sha256": "b54c2a609d7b4bc7759cabce5bb6b2fd1e9170970bbc7cc7a7c65a15062fad53"
+    },
+    {
+      "id": "1NyZAPZOcbzj_x-KzZYs6NuUqkahNmh-8",
+      "name": "20261020-JinguStadium-3_unverified.csv",
+      "modifiedTime": "2026-10-22T00:24:51.419Z",
+      "size": 315766,
+      "sha256": "97f05cec2efd7a030f48ad10e4f34611b7a3bb19fa069e699cce1eb09360c7e8"
+    },
+    {
+      "id": "1pSAXshQA3Eu_8m7JIFDSRJIPZfIfBlMQ",
+      "name": "20261022-JinguStadium-1.csv",
+      "modifiedTime": "2026-10-24T06:16:26.098Z",
+      "size": 277931,
+      "sha256": "086b58ba2c312ed691734ea1ad629c9755dd0376be121c9fc2761412c2423591"
+    },
+    {
       "id": "1QmKKTlQl9zUOfUXJezgg9dSB7Lbw1PFK",
       "name": "20260909-JinguStadium-2_unverified.csv",
       "modifiedTime": "2026-09-09T12:29:12.000Z",
       "size": 305041,
       "sha256": "db51feab3e205e0a87fce5f2760b2339109837acd9dd19950ac7d271224e2330"
+    },
+    {
+      "id": "1R5-M0s-m0Bq5507VU04Cuit5RTrIRu5y",
+      "name": "20261013-JinguStadium-1.csv",
+      "modifiedTime": "2026-10-15T08:06:52.967Z",
+      "size": 264975,
+      "sha256": "f4b3ccd2e0398374b8574161a3f2be430e5f3b20c6bf5877bed3733c0e3e8d07"
     },
     {
       "id": "1rUAdBTiRxQs9z9-uSfcUHBkZ85D22iRf",
@@ -98,11 +231,32 @@
       "sha256": "d01d94b4ef7cc10a68daff2dd4be7507df470e4d8106086a35292bf8d331a187"
     },
     {
+      "id": "1Sp-wSqSL49i0x1a0y2yIw8jGIb3q0HSY",
+      "name": "20261001-JinguStadium-3_unverified.csv",
+      "modifiedTime": "2026-10-03T23:51:03.845Z",
+      "size": 237287,
+      "sha256": "dc8a9376f826ab6a62780be092f9b0ee97e914dd9eabe77e5127887d6face909"
+    },
+    {
+      "id": "1SQeUdEyms7BkttUEYLIt_A43jCW_zCs9",
+      "name": "20261021-JinguStadium-2.csv",
+      "modifiedTime": "2026-10-22T00:25:22.166Z",
+      "size": 354144,
+      "sha256": "44dd52dab9940b209a7b031af7250435a50fb4bc6a5432fe943f75b1f1c86d53"
+    },
+    {
       "id": "1tEgYC5RKT1-cToGNDJtf_8Zgx_A02NsL",
       "name": "20260924-JinguStadium-2.csv",
       "modifiedTime": "2026-09-25T12:52:02.358Z",
       "size": 330005,
       "sha256": "ac2d06d5553332988301284ff810ee27bb146436cec8ff492571a38a882c525c"
+    },
+    {
+      "id": "1TQrO75nqLf-sIhg_BTDZrqb-QGuKlrM5",
+      "name": "20261020-JinguStadium-1_unverified.csv",
+      "modifiedTime": "2026-10-22T00:25:09.338Z",
+      "size": 305810,
+      "sha256": "cca59de51f725805895f5d07f058de9487d4f7c88409d29e8f258105bfd644aa"
     },
     {
       "id": "1TW__DWVDAeVi16k9cU1uVNOX5w_sc2Ti",

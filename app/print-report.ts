@@ -13,9 +13,13 @@ export async function printReport(selector: string, kind: string, mode = 'single
   const dialog = document.createElement('dialog');
   dialog.className = 'report-preview';
   dialog.setAttribute('aria-label', '印刷プレビュー');
-  dialog.innerHTML = `<div class="report-preview-toolbar"><div><h2>印刷プレビュー</h2><p class="report-preview-meta">A4${layout.label}・余白7mm</p></div><div class="report-preview-actions"><label>表示倍率 <select aria-label="プレビュー表示倍率"><option value="fit">画面に合わせる</option><option value="1">100%</option></select></label><button type="button" data-action="print" disabled>印刷／PDF保存</button><button type="button" data-action="close">戻る</button></div></div><p class="report-preview-status" role="status" aria-live="polite">資料とチャートを準備しています…</p><p class="report-preview-settings">印刷設定：A4・${layout.label}・倍率100%・ヘッダーとフッターをオフ。PDF保存は印刷画面の送信先で選べます。</p><div class="report-preview-viewport"><div class="report-preview-scaled"><iframe title="印刷する資料" sandbox="allow-same-origin allow-modals"></iframe></div></div>`;
+  dialog.innerHTML = `<div class="report-preview-toolbar"><div><h2>印刷プレビュー</h2><p class="report-preview-meta">A4${layout.label}・余白7mm</p></div><div class="report-preview-actions"><label>表示倍率 <select aria-label="プレビュー表示倍率"><option value="fit">画面に合わせる</option><option value="1">100%</option></select></label><button type="button" data-action="pdf" disabled>PDFを作成・保存</button><a data-action="download" hidden>PDFを保存</a><a data-action="open-pdf" target="_blank" rel="noopener" hidden>PDFを開く</a><button type="button" data-action="share" hidden>共有・ファイルに保存</button><button type="button" data-action="print" disabled>印刷する</button><button type="button" data-action="close">戻る</button></div></div><p class="report-preview-status" role="status" aria-live="polite">資料とチャートを準備しています…</p><p class="report-preview-settings">スマホでは「PDFを作成・保存」から保存できます。iPhoneは作成後の「共有・ファイルに保存」、またはPDFを開いて共有メニューの「ファイルに保存」を選んでください。印刷設定：A4・${layout.label}・倍率100%・ヘッダーとフッターをオフ。</p><div class="report-preview-viewport"><div class="report-preview-scaled"><iframe title="印刷する資料" sandbox="allow-same-origin allow-modals"></iframe></div></div>`;
   const frame = dialog.querySelector('iframe')!;
   const printButton = dialog.querySelector<HTMLButtonElement>('[data-action="print"]')!;
+  const pdfButton = dialog.querySelector<HTMLButtonElement>('[data-action="pdf"]')!;
+  const downloadLink = dialog.querySelector<HTMLAnchorElement>('[data-action="download"]')!;
+  const openPdfLink = dialog.querySelector<HTMLAnchorElement>('[data-action="open-pdf"]')!;
+  const shareButton = dialog.querySelector<HTMLButtonElement>('[data-action="share"]')!;
   const closeButton = dialog.querySelector<HTMLButtonElement>('[data-action="close"]')!;
   const status = dialog.querySelector<HTMLElement>('.report-preview-status')!;
   const meta = dialog.querySelector<HTMLElement>('.report-preview-meta')!;
@@ -24,6 +28,9 @@ export async function printReport(selector: string, kind: string, mode = 'single
   const zoom = dialog.querySelector<HTMLSelectElement>('select')!;
   let frameHeight = 0;
   let disposed = false;
+  let pdfUrl: string | undefined;
+  let pdfFile: File | undefined;
+  let creatingPdf = false;
   const preparation = new AbortController();
   const resize = () => {
     const width = layout.width * 96 / 25.4;
@@ -39,6 +46,8 @@ export async function printReport(selector: string, kind: string, mode = 'single
     if (disposed) return;
     disposed = true;
     preparation.abort();
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    pdfFile = undefined;
     observer?.disconnect();
     window.removeEventListener('resize', resize);
     dialog.remove();
@@ -59,7 +68,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
     } else window.addEventListener('resize', resize);
     await waitForReady(document.fonts.ready, preparation.signal);
     if (disposed) return;
-    const pageSelector = kind === 'opponent' || kind === 'batter-direction' ? '.opponent-print-page' : kind === 'count'
+    const pageSelector = kind === 'analysis' ? '.analysis-print-page' : kind === 'opponent' || kind === 'batter-direction' ? '.opponent-print-page' : kind === 'count'
       ? mode === 'team' ? '.count-bulk-print-root > .count-print-sheet' : '.count-single-print-content'
       : kind === 'spray' ? '.spray-print-sheet' : kind === 'batter-profile' ? '.batter-profile-print-page' : kind === 'batter-side' ? '.bs-sheet' : '.scouting-print-sheet';
     const sources = Array.from(source.querySelectorAll<HTMLElement>(pageSelector));
@@ -69,7 +78,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
     doc.head.replaceChildren();
     doc.body.replaceChildren();
     const title = doc.createElement('title');
-    const reportName = kind === 'opponent' ? '対戦大学資料' : kind === 'batter-direction' ? '左右別打球方向' : kind === 'spray' ? '打球方向' : kind === 'count' ? 'カウント別投球分析' : kind === 'batter-profile' ? '打者プロファイル' : kind === 'batter-side' ? '左右別打者分析' : kind === 'side' ? '左右別投球分析' : '打者分析';
+    const reportName = kind === 'analysis' ? source.dataset.reportName || '投球分析' : kind === 'opponent' ? '対戦大学資料' : kind === 'batter-direction' ? '左右別打球方向' : kind === 'spray' ? '打球方向' : kind === 'count' ? 'カウント別投球分析' : kind === 'batter-profile' ? '打者プロファイル' : kind === 'batter-side' ? '左右別打者分析' : kind === 'side' ? '左右別投球分析' : '打者分析';
     title.textContent = reportName;
     doc.head.append(title);
     // Preserve cascade order and activate print rules for the preview too.
@@ -125,7 +134,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
       });
       root.append(snapshot);
       content.append(root);
-      const name = snapshot.querySelector('.opponent-heading h2, .bs-heading h2, .spray-print-heading h1, .count-print-heading strong, .scouting-print-heading strong, .batter-profile-print-player h1')?.textContent?.trim() || reportName;
+      const name = snapshot.querySelector('.analysis-print-player, .analysis-print-heading h2, .opponent-heading h2, .bs-heading h2, .spray-print-heading h1, .count-print-heading strong, .scouting-print-heading strong, .batter-profile-print-player h1')?.textContent?.trim() || reportName;
       names.push(name);
       const footer = doc.createElement('div');
       footer.className = 'print-document-footer';
@@ -151,6 +160,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
     const validate = () => {
       const issues = inspectPrintDocument(doc);
       printButton.disabled = issues.length > 0;
+      pdfButton.disabled = issues.length > 0 || creatingPdf;
       status.dataset.state = issues.length ? 'warning' : 'ready';
       status.textContent = issues.length
         ? `${issues.join(' ／ ')}。戻って対象や条件を調整してください。見切れを防ぐため印刷を停止しています。`
@@ -159,6 +169,56 @@ export async function printReport(selector: string, kind: string, mode = 'single
     };
     validate();
     viewport.scrollTop = 0;
+    pdfButton.onclick = async () => {
+      if (creatingPdf || !validate()) return;
+      creatingPdf = true;
+      pdfButton.disabled = true;
+      printButton.disabled = true;
+      pdfButton.setAttribute('aria-busy', 'true');
+      status.textContent = 'PDFを作成しています…';
+      try {
+        // Load the PDF libraries only when requested; ordinary analysis stays light.
+        const { createReportPdf } = await import('./report-pdf');
+        const blob = await createReportPdf(doc, preparation.signal, (page, total) => {
+          if (!disposed) status.textContent = `PDFを作成しています… ${page} / ${total}ページ`;
+        });
+        if (disposed) return;
+        pdfUrl = URL.createObjectURL(blob);
+        const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
+        const filename = `ID東都_${reportName}_${date}.pdf`;
+        pdfFile = new File([blob], filename, { type: 'application/pdf' });
+        downloadLink.href = openPdfLink.href = pdfUrl;
+        downloadLink.download = filename;
+        downloadLink.hidden = openPdfLink.hidden = false;
+        shareButton.hidden = !(navigator.canShare?.({ files: [pdfFile] }) && navigator.share);
+        pdfButton.hidden = true;
+        status.dataset.state = 'ready';
+        status.textContent = `${sources.length}ページのPDFを作成しました。「PDFを保存」または「共有・ファイルに保存」を選んでください。`;
+        downloadLink.focus();
+      } catch {
+        if (!disposed) {
+          status.dataset.state = 'warning';
+          status.textContent = 'PDFを作成できませんでした。もう一度お試しください。ページ数が多い場合は選手を分けて作成してください。';
+        }
+      } finally {
+        creatingPdf = false;
+        if (!disposed) {
+          pdfButton.disabled = false;
+          printButton.disabled = false;
+          pdfButton.removeAttribute('aria-busy');
+        }
+      }
+    };
+    // This separate tap keeps the user activation required by iPhone's share sheet.
+    shareButton.onclick = async () => {
+      if (!pdfFile) return;
+      try { await navigator.share({ files: [pdfFile] }); }
+      catch (error) {
+        if (!disposed && !(error instanceof Error && error.name === 'AbortError')) {
+          status.textContent = '共有画面を開けませんでした。「PDFを保存」、または「PDFを開く」から保存してください。';
+        }
+      }
+    };
     printButton.onclick = () => {
       if (!validate()) return;
       try { frame.contentWindow!.focus(); frame.contentWindow!.print(); }
@@ -178,6 +238,7 @@ export async function printReport(selector: string, kind: string, mode = 'single
         cleanup();
       }
       printButton.disabled = true;
+      pdfButton.disabled = true;
     }
   }
 }

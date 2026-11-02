@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import type { Dataset, Row } from "../lib/dataset-types";
+import type { SeasonKey } from "../lib/dataset-types";
+import type { ComparisonEntry } from "../lib/player-comparison";
+import { seasonInfo } from "../lib/seasons.mjs";
 
 const PITCH_ORDER = ["ストレート", "シンカー", "カットボール", "スライダー", "カーブ", "フォーク", "チェンジアップ", "ナックル", "その他", "不明"];
 const COMPONENTS = [
@@ -22,17 +24,16 @@ function componentValue(value: unknown, digits: number) {
   return Number(value.toFixed(digits)).toLocaleString("ja-JP", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-export default function PitchComponentComparison({ data, players, pitchType, onPitchTypeChange, onSelectPlayer }: {
-  data: Dataset;
-  players: Row[];
+export default function PitchComponentComparison({ entries, pitchType, onPitchTypeChange, onSelectPlayer }: {
+  entries: ComparisonEntry[];
   pitchType: string;
   onPitchTypeChange: (value: string) => void;
-  onSelectPlayer: (id: string) => void;
+  onSelectPlayer: (id: string, season: SeasonKey) => void;
 }) {
   // Use the same normalized, season-specific arsenal as the player detail.
-  const arsenals = useMemo(() => new Map(players.map(player => [player.id,
-    new Map(data.pitchTypes.filter(row => row.pitcherId === player.id).map(row => [row.pitchType, row])),
-  ])), [data.pitchTypes, players]);
+  const arsenals = useMemo(() => new Map(entries.map(entry => [entry.key,
+    new Map(entry.pitchTypes.map(row => [row.pitchType, row])),
+  ])), [entries]);
   const types = [...new Set([...arsenals.values()].flatMap(arsenal => [...arsenal.keys()]))].sort((a, b) => {
     const aRank = PITCH_ORDER.indexOf(a), bRank = PITCH_ORDER.indexOf(b);
     return (aRank < 0 ? PITCH_ORDER.length : aRank) - (bRank < 0 ? PITCH_ORDER.length : bRank) || a.localeCompare(b, "ja");
@@ -40,7 +41,7 @@ export default function PitchComponentComparison({ data, players, pitchType, onP
   const activeType = types.includes(pitchType) ? pitchType : "";
   const visibleTypes = activeType ? [activeType] : types;
 
-  if (!players.length) return <p className="pitch-compare-empty">比較する投手を選択してください。</p>;
+  if (!entries.length) return <p className="pitch-compare-empty">比較する投手を選択してください。</p>;
   if (!types.length) return <p className="pitch-compare-empty">選択した投手の球種データがありません。</p>;
 
   return <div className="pitch-component-comparison">
@@ -53,16 +54,16 @@ export default function PitchComponentComparison({ data, players, pitchType, onP
     {visibleTypes.map(type => <section className="pitch-compare-section" key={type}>
       <h2>{type}</h2>
       <div className="pitch-compare-scroll" role="region" aria-label={`${type}の球種成分比較`} tabIndex={0}>
-        <table className="pitch-compare-table" style={{ minWidth: `${11 + players.length * 10}rem` }}>
-          <thead><tr><th scope="col">成分</th>{players.map(player => <th scope="col" key={player.id}>
-            <button type="button" onClick={() => onSelectPlayer(player.id)}>{player.kanji || player.name}</button>
-            <span>{player.team}</span>
+        <table className="pitch-compare-table" style={{ minWidth: `${11 + entries.length * 10}rem` }}>
+          <thead><tr><th scope="col">成分</th>{entries.map(entry => <th scope="col" key={entry.key}>
+            <button type="button" onClick={() => onSelectPlayer(entry.player.id, entry.season)}>{entry.player.kanji || entry.player.name}</button>
+            <span>{entry.player.team}</span><span>{seasonInfo(entry.season).label}</span>
           </th>)}</tr></thead>
           <tbody>{COMPONENTS.map(component => <tr key={component.key}>
             <th scope="row">{component.label}<span>{component.unit}</span></th>
-            {players.map(player => {
-              const arsenal = arsenals.get(player.id)?.get(type);
-              return <td key={player.id}>{componentValue(arsenal?.[component.key], component.digits)}</td>;
+            {entries.map(entry => {
+              const arsenal = arsenals.get(entry.key)?.get(type);
+              return <td key={entry.key}>{componentValue(arsenal?.[component.key], component.digits)}</td>;
             })}
           </tr>)}</tbody>
         </table>

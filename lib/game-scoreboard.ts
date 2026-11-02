@@ -11,7 +11,7 @@ export function gameScoreboard(game: Row, pitches: Row[]) {
   const last = Math.max(9, ...rows.map(p => Number.isInteger(p.inning) && p.inning > 0 ? p.inning : 0));
   return { innings: Array.from({ length: last }, (_, i) => i + 1), teams: [game.awayTeam, game.homeTeam].map(team => {
     const batting = rows.filter(p => p.batterTeam === team);
-    const walks = batting.filter(p => p.korbb === 'Walk').length;
+    const walks = batting.filter(p => p.result !== '死球' && ['Walk', 'Waik'].includes(p.korbb)).length;
     const hbp = batting.filter(p => p.result === '死球').length;
     return {
       team,

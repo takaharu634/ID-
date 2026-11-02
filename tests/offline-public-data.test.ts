@@ -152,3 +152,36 @@ test('all real bundled seasons load through checksummed compact/original files a
     assert.equal((await offline<{ metadata: { pitches: number } }>(`/data/season-${season}.json`)).metadata.pitches, summary.metadata.pitches);
   }
 });
+
+test('invalidated slow loaders cannot overwrite a newer offline snapshot or clear its notice', async () => {
+  const mem = memoryStorage(), store = createPublicOfflineStore(mem.storage), season = '2055-fall';
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  const older = createDatasetLoader(async url => {
+    if (String(url).endsWith('json')) await delayed;
+    return responseFor(season, 'old', new URL(String(url), 'https://test.invalid').searchParams.get('format')!);
+  }, true, store);
+  const oldRequest = older(`/data/season-${season}.json`);
+  older.invalidate();
+  const newer = createDatasetLoader(async url => responseFor(season, 'new', new URL(String(url), 'https://test.invalid').searchParams.get('format')!), true, store);
+  await newer(`/data/season-${season}.json`);
+  const fallback = createDatasetLoader(async () => { throw new Error('offline'); }, true, store);
+  await fallback(`/data/season-${season}.json`);
+  assert.equal(hasSavedPublicDataNotice(season), true);
+  release(); await oldRequest;
+  assert.equal((await store.readPair(season))?.version, 'new');
+  assert.equal(hasSavedPublicDataNotice(season), true, 'an obsolete response cannot clear the current warning');
+});
+
+test('offline writes recheck validity after waiting for storage', async () => {
+  const mem = memoryStorage(), season = '2056-spring';
+  await createPublicOfflineStore(mem.storage).savePair(season, 'new', publicSummary(season), []);
+  let release!: () => void, opened!: () => void, active = true;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { opened = resolve; });
+  const storage = { open: async () => { opened(); await delayed; return mem.cache; } } as unknown as CacheStorage;
+  const save = createPublicOfflineStore(storage).savePair(season, 'old', publicSummary(season), [], () => active);
+  await started; active = false; release();
+  assert.equal(await save, false);
+  assert.equal((await createPublicOfflineStore(mem.storage).readPair(season))?.version, 'new');
+});

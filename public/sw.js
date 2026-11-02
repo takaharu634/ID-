@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'tohto-savant-offline-v9';
+const CACHE_VERSION = 'tohto-savant-offline-v10';
 const APP_CACHE = `${CACHE_VERSION}-app`;
 // The application validates and atomically saves summary + spin as one record.
 const DATA_CACHE = 'tohto-public-snapshots-v1';
@@ -73,6 +73,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
+        if (response.status >= 500) return (await cachedResponse('/')) || response;
         if (response.ok) await saveAppResponse('/', response);
         return response;
       } catch { return (await cachedResponse('/')) || Response.error(); }

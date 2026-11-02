@@ -17,17 +17,20 @@
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
     "prepare:data": "node scripts/prepare-data.mjs",
     "typecheck": "tsc --noEmit --incremental false",
-    "test:unit": "node --experimental-strip-types --test --test-concurrency=2 tests/*.test.ts tests/catalog-refresh.test.mjs tests/autumn-import.test.mjs tests/import-pipeline.test.mjs tests/catcher-view.test.mjs tests/drive-push.test.mjs tests/longevity/*.test.mjs",
+    "test:unit": "node --experimental-strip-types --test --test-concurrency=2 tests/*.test.ts tests/catalog-refresh.test.mjs tests/player-comparison-ui.test.mjs tests/autumn-import.test.mjs tests/import-pipeline.test.mjs tests/catcher-view.test.mjs tests/batter-side-report.test.mjs tests/analysis-print-selection.test.mjs tests/report-pdf.test.mjs tests/batting-ui.test.mjs tests/drive-push.test.mjs tests/longevity/*.test.mjs tests/trajectory-background.test.mjs tests/trajectory-display.test.mjs tests/trajectory-controller.test.mjs",
     "trackman:sync": "node scripts/sync-autumn-data.mjs",
     "test:batting": "node --test tests/batting-ui.test.mjs tests/autumn-import.test.mjs",
     "test:autumn": "node --test tests/autumn-import.test.mjs tests/batting-ui.test.mjs tests/autumn-spin.test.mjs",
     "test:import": "node --test tests/import-pipeline.test.mjs",
-    "test:runtime": "node --test --test-concurrency=1 tests/import-runtime.test.mjs tests/drive-push-runtime.test.mjs tests/backup-runtime.test.mjs",
+    "test:runtime": "node --test --test-concurrency=1 tests/import-runtime.test.mjs tests/drive-push-runtime.test.mjs tests/backup-runtime.test.mjs tests/trajectory-runtime.test.mjs",
     "test:drive-push": "node --test tests/drive-push.test.mjs",
-    "predev": "node scripts/prepare-data.mjs"
+    "predev": "node scripts/prepare-data.mjs",
+    "test:trajectory": "node --test tests/trajectory-background.test.mjs tests/trajectory-display.test.mjs tests/trajectory-controller.test.mjs tests/trajectory-runtime.test.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
+    "html2canvas": "1.4.1",
+    "jspdf": "4.2.1",
     "next": "16.3.5",
     "react": "19.2.6",
     "react-dom": "19.2.6"

@@ -28,7 +28,9 @@ test('workload keeps whole-appearance numbering after pitch-type filters', () =>
   const report = pitcherDevelopmentReport(rows.filter(p => p.pitchType === 'ストレート'), rows, []);
   assert.equal(report.workload[0].pitches, 8);
   assert.equal(report.workload.at(-1)?.pitches, 15);
-  near(report.maintenance[0].velocityRetention, .98);
+  const baseline = rows.filter(p => p.pitchType === 'ストレート').reduce((s, p) => s + p.velocity, 0) / 45;
+  near(report.maintenance[0].baselineVelocity, baseline);
+  near(report.maintenance[0].velocityRetention, 147 / baseline);
 });
 test('release baseline excludes current/future appearances but includes previous unselected games', () => {
   const first = appearance('a', '2026-04-01', 150, 170), second = appearance('b', '2026-04-08', 149, 173), future = appearance('c', '2026-04-15', 155, 190);
@@ -51,7 +53,7 @@ test('Damage excludes foul and bunt EV and uses separate measurement denominator
   const rows = [{ result: 'インプレー', exitVelocity: 160, launchAngle: 28, expectedTb: 2, playResult: '二塁打' }, { result: 'ファウル', exitVelocity: 200, launchAngle: 30 }, { result: 'インプレー', exitVelocity: 140, launchAngle: null, expectedTb: null }, { result: '空振り', korbb: 'Strikeout' }, { result: 'インプレー', hitType: 'Bunt', exitVelocity: 30, launchAngle: 0 }];
   const r = damageSummary(rows);
   near(r.avgEv, 150); assert.equal(r.bbe, 2); assert.equal(r.angleBbe, 1);
-  near(r.hardHitRate, .5); near(r.barrelRate, 1); near(r.xslg, 1); assert.equal(r.xslgAb, 2);
+  near(r.hardHitRate, .5); near(r.barrelRate, 1); assert.equal('xslg' in r, false); assert.equal('xslgAb' in r, false);
 });
 test('Pull Air mirrors handedness and keeps ground balls in denominator', () => {
   const rows = [{ result: 'インプレー', batterSide: '右', sprayAngle: -25, launchAngle: 30, hitType: 'FlyBall' }, { result: 'インプレー', batterSide: '左', sprayAngle: 25, launchAngle: 20, hitType: 'LineDrive' }, { result: 'インプレー', batterSide: '右', sprayAngle: -25, launchAngle: 0, hitType: 'GroundBall' }, { result: 'インプレー', batterSide: '右', sprayAngle: null, launchAngle: 30, hitType: 'FlyBall' }];

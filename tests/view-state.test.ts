@@ -28,3 +28,29 @@ test('player IDs containing university separators persist intact and explicit co
     assert.equal(fake.location.href,url,'old season cannot rewrite new URL');
   } finally { if(previous)Object.defineProperty(globalThis,'window',previous);else Reflect.deleteProperty(globalThis,'window'); }
 });
+
+test('ranking links preserve metric group and table filters across fresh sessions', () => {
+  const season='2026年秋季',board='pitching_percentile';
+  const scope=`leaders|${season}|${board}`,metric=`leadersMetrics|${season}|${board}`,detail=`leadersDevelopment|${season}|${board}|release`;
+  const fake:any={location:{href:'https://example.test/?表示=leaders&シーズン=2026-fall&指標=pitching_percentile',search:''},sessionStorage:{getItem:()=>null,setItem:()=>{}},history:{state:null,replaceState:(_s:unknown,_title:string,url:string)=>{fake.location.href=`https://example.test${url}`;fake.location.search=new URL(fake.location.href).search;}}};
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'window');
+  Object.defineProperty(globalThis,'window',{value:fake,configurable:true});
+  const defaults={team:'',minimum:100,sortKey:'x',direction:'desc'};
+  const filters={team:'中央大学',minimum:25,sortKey:'release',direction:'asc'};
+  try {
+    persistViewState(metric,{group:'release'});
+    persistViewState(detail,filters);
+    persistViewState(metric,{group:'release'});
+    assert.equal(new URL(fake.location.href).searchParams.get('条件先'),scope);
+    assert.deepEqual(readViewState(metric,{group:'standard'}),{group:'release'});
+    assert.deepEqual(readViewState(detail,defaults),filters);
+    assert.deepEqual(readViewState(scope,defaults),defaults,'a different group cannot inherit incompatible filters');
+    const url=fake.location.href;
+    persistViewState(`leadersDevelopment|${season}|batting_average|release`,filters);
+    assert.equal(fake.location.href,url,'another board cannot overwrite the active link');
+    persistViewState(metric,{group:'standard'});
+    persistViewState(scope,{...defaults,team:'立正大学'});
+    assert.deepEqual(readViewState(metric,{group:'other'}),{group:'standard'});
+    assert.equal(readViewState(scope,defaults).team,'立正大学');
+  } finally {if(previous)Object.defineProperty(globalThis,'window',previous);else Reflect.deleteProperty(globalThis,'window');}
+});

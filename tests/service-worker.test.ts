@@ -15,6 +15,7 @@ async function harness() {
   const fetched: string[] = [];
   let offline = false;
   let quotaExceeded = false;
+  let failureStatus = 0;
   let claimed = false;
   const key = (request: string | Request) => new URL(typeof request === 'string' ? request : request.url, 'https://test.invalid').href;
   const caches = {
@@ -42,6 +43,7 @@ async function harness() {
       const url = key(request);
       fetched.push(url);
       if (offline) throw new Error('offline');
+      if (failureStatus) return new Response('temporarily unavailable', { status: failureStatus });
       return new URL(url).pathname === '/' ? new Response('<script src="/assets/app.js"></script><a href="/admin">管理</a>') : Response.json({ pitches: [1] });
     },
   });
@@ -53,7 +55,7 @@ async function harness() {
     await Promise.all(pending);
     return { result, backgroundTasks: pending.length };
   }
-  return { dispatch, caches, stores, fetched, exhaustStorage: () => { quotaExceeded = true; }, setOffline: () => { offline = true; }, claimed: () => claimed };
+  return { dispatch, caches, stores, fetched, failWith: (status: number) => { failureStatus = status; }, exhaustStorage: () => { quotaExceeded = true; }, setOffline: () => { offline = true; }, claimed: () => claimed };
 }
 
 test('offline install caches shell without downloading unused seasons, and removes obsolete caches', async () => {
@@ -67,7 +69,7 @@ test('offline install caches shell without downloading unused seasons, and remov
   await h.dispatch('activate');
   assert.equal(h.claimed(), true);
   assert.ok(!h.stores.has('tohto-savant-offline-v4-data'));
-  assert.ok(h.stores.has('tohto-savant-offline-v9-app'));
+  assert.ok(h.stores.has('tohto-savant-offline-v10-app'));
   assert.deepEqual(await (await h.caches.match('/data/compact/season-2026-fall.json'))!.json(), { pitches: [42] });
 });
 
@@ -100,6 +102,22 @@ test('storage denied still returns successful page and asset responses', async (
     const { result } = await h.dispatch('fetch', { request });
     assert.equal(result?.status, 200, path);
   }
+});
+
+test('temporary server failures use saved shell without replacing it, while 4xx remain visible', async () => {
+  const h = await harness();
+  await h.dispatch('install');
+  const request = new Request('https://test.invalid/?view=search');
+  Object.defineProperty(request, 'mode', { value: 'navigate' });
+  h.failWith(503);
+  const cached = await h.dispatch('fetch', { request });
+  assert.equal(cached.result?.status, 200);
+  assert.match(await cached.result!.text(), /app.js/);
+  assert.equal((await h.caches.match('/'))?.status, 200);
+  h.failWith(403);
+  assert.equal((await h.dispatch('fetch', { request })).result?.status, 403);
+  const empty = await harness(); empty.failWith(503);
+  assert.equal((await empty.dispatch('fetch', { request })).result?.status, 503);
 });
 
 test('activation retires unpaired data caches and retains verified snapshot storage', async () => {

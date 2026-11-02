@@ -113,6 +113,7 @@ export function pitcherDevelopmentReport(selected: Row[], allPitcherRows: Row[],
     for (const [pitchType, rows] of groupBy(relevant, p => p.pitchType || '不明')) {
       const prior = (priorByType.get(`${seasonOf(rows[0])}|${pitchType}`) ?? []).filter(p => `${p.date}T${p.time || '00:00:00'}` < appearance.start && String(p.gameId) !== appearance.id);
       const current = rows.filter(shapeValid), baseline = prior.filter(shapeValid);
+      const seasonVelocity = meanOf(allPitcherRows.filter(p => seasonOf(p) === seasonOf(rows[0]) && p.pitchType === pitchType && shapeValid(p) && finite(p.velocity) && p.velocity > 0), 'velocity');
       const release: Row = { gameId: appearance.id, date: appearance.date, pitchType, pitches: rows.length, baselinePitches: baseline.length };
       for (const [field, short] of [['releaseHeight', 'height'], ['releaseSide', 'side'], ['extension', 'extension']]) {
         const n = current.filter(p => finite(p[field])).length, b = baseline.filter(p => finite(p[field])).length;
@@ -124,12 +125,12 @@ export function pitcherDevelopmentReport(selected: Row[], allPitcherRows: Row[],
       for (let i = 0; i < 5; i++) {
         const block = current.filter(p => Math.min(4, Math.floor((p.appearancePitch - 1) / 15)) === i);
         if (block.length) workload.push({ gameId: appearance.id, date: appearance.date, pitchType, bucket: i, segment: i === 4 ? '61球〜' : `${i * 15 + 1}〜${i * 15 + 15}球`, pitches: block.length,
-          velocity: meanOf(block, 'velocity'), ivb: meanOf(block.filter(p => !low(p.pitchMovementConfidence)), 'ivb'), extension: meanOf(block, 'extension'), releaseHeight: meanOf(block, 'releaseHeight') });
+          velocity: meanOf(block, 'velocity'), baselineVelocity: seasonVelocity, velocityDelta: seasonVelocity === null || meanOf(block, 'velocity') === null ? null : meanOf(block, 'velocity')! - seasonVelocity, ivb: meanOf(block.filter(p => !low(p.pitchMovementConfidence)), 'ivb'), extension: meanOf(block, 'extension'), releaseHeight: meanOf(block, 'releaseHeight') });
       }
       const first = current.filter(p => p.appearancePitch <= 15 && finite(p.velocity) && p.velocity > 0);
       const late = current.filter(p => p.appearancePitch >= 61 && finite(p.velocity) && p.velocity > 0);
-      if (first.length >= 3 && late.length >= 3) maintenance.push({ gameId: appearance.id, date: appearance.date, pitchType,
-        firstN: first.length, lateN: late.length, early: meanOf(first, 'velocity'), late: meanOf(late, 'velocity'), velocityRetention: meanOf(late, 'velocity')! / meanOf(first, 'velocity')! });
+      if (seasonVelocity !== null && seasonVelocity > 0 && late.length >= 3) maintenance.push({ gameId: appearance.id, date: appearance.date, pitchType,
+        firstN: first.length, lateN: late.length, early: meanOf(first, 'velocity'), late: meanOf(late, 'velocity'), baselineVelocity: seasonVelocity, velocityDelta: meanOf(late, 'velocity')! - seasonVelocity, velocityRetention: meanOf(late, 'velocity')! / seasonVelocity });
     }
     for (const [type, rows] of groupBy(appearance.rows, p => `${seasonOf(p)}|${p.pitchType || '不明'}`)) priorByType.set(type, [...(priorByType.get(type) ?? []), ...rows]);
   }
@@ -151,12 +152,9 @@ export function damageSummary(rows: Row[]): Row {
   const swings = eligible.filter(isDevelopmentSwing), contacts = swings.filter(p => p.result !== '空振り');
   const batted = rows.filter(p => isFair(p) && finite(p.exitVelocity) && p.exitVelocity > 0);
   const angles = batted.filter(p => finite(p.launchAngle));
-  const expected = rows.filter(p => isFair(p) && p.playResult !== '犠打・犠飛' && finite(p.expectedTb) && finite(p.exitVelocity) && p.exitVelocity > 0 && finite(p.launchAngle));
-  const ks = rows.filter(p => p.korbb === 'Strikeout' && p.hitType !== 'Bunt');
   return { pitches: eligible.length, swings: swings.length, contacts: contacts.length, bbe: batted.length, angleBbe: angles.length,
     swingRate: ratio(swings.length, eligible.length), contactRate: ratio(contacts.length, swings.length), avgEv: meanOf(batted, 'exitVelocity'),
-    hardHitRate: ratio(batted.filter(p => p.exitVelocity >= 152.9).length, batted.length), barrelRate: ratio(angles.filter(barrel).length, angles.length),
-    xslg: ratio(expected.reduce((s, p) => s + p.expectedTb, 0), expected.length + ks.length), xslgAb: expected.length + ks.length };
+    hardHitRate: ratio(batted.filter(p => p.exitVelocity >= 152.9).length, batted.length), barrelRate: ratio(angles.filter(barrel).length, angles.length) };
 }
 
 export function batterDevelopment(rows: Row[]) {
@@ -179,7 +177,7 @@ export function batterDevelopment(rows: Row[]) {
     angleSd: sampleSd(fair, 'launchAngle'), angleSamples: fair.filter(p => finite(p.launchAngle)).length,
     pullAirRate: ratio(pull.length, directionRows.length), pullAirSamples: directionRows.length, goodDecisionRate: ratio(good.length, decisions.length), goodDecisions: good.length, decisionSamples: decisions.length,
     twoStrikeContactRate: ratio(two.filter(p => p.result !== '空振り').length, two.length), twoStrikeSwings: two.length,
-    zoneAvgEv: zone.avgEv, zoneHardHitRate: zone.hardHitRate, zoneBarrelRate: zone.barrelRate, zoneXslg: zone.xslg, zoneBbe: zone.bbe, zoneSwingRate: zone.swingRate, zoneContactRate: zone.contactRate,
+    zoneAvgEv: zone.avgEv, zoneHardHitRate: zone.hardHitRate, zoneBarrelRate: zone.barrelRate, zoneBbe: zone.bbe, zoneSwingRate: zone.swingRate, zoneContactRate: zone.contactRate,
     heartAvgEv: heart.avgEv, heartHardHitRate: heart.hardHitRate, heartBbe: heart.bbe } };
 }
 

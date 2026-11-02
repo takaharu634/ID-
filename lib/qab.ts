@@ -52,8 +52,8 @@ export function contactQuality(p: Row): ContactQuality {
 
 function terminalResult(p: Row): string | null {
   if (hits.has(p.playResult)) return p.playResult;
-  if (['Walk', 'Waik'].includes(p.korbb) || (p.balls === 3 && ['ボール', 'ワンバウンド', '敬遠'].includes(p.result))) return '四球';
   if (p.result === '死球') return '死球';
+  if (['Walk', 'Waik'].includes(p.korbb) || (p.balls === 3 && ['ボール', 'ワンバウンド', '敬遠'].includes(p.result))) return '四球';
   if (p.korbb === 'Strikeout' || (p.strikes === 2 && ['空振り', '見逃しストライク'].includes(p.result))) return '三振';
   if (validPlays.has(p.playResult)) return p.playResult;
   if (p.result === 'ファウルフライ' && p.outsOnPlay > 0) return 'アウト';

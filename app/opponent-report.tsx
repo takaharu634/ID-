@@ -6,6 +6,7 @@ import { summarizeByPitchType } from '../lib/pitch-summary';
 import { BatterPdfPage } from './batter-pdf-report';
 import { BattedBallDirectionChart, BattedDirectionLegend } from './batted-ball-direction';
 import { printReport } from './print-report';
+import AnalysisPrintSelection from './analysis-print-selection';
 
 type PlayerGroup = ReturnType<typeof groupReportPlayers>[number];
 type Props = { team:string; pitches:Row[]; label:string; countMatrix:(rows:Row[])=>ReactNode; locationPlot:(rows:Row[],scaleRows:Row[])=>ReactNode; legend:ReactNode; pitchColors:Record<string,string> };
@@ -18,8 +19,8 @@ export function PitcherPacketPage({player,team,label,side,countMatrix}:{player:P
   const rows=player.pitches.filter(p=>p.batterSide===side),summary=summarizeByPitchType(rows,'pitcher');
   return <article className="opponent-print-page opponent-pitcher-page" data-print-kind="count">
     <Heading name={player.name} team={team} title={`対${side}打者｜カウント別投球分析`} label={label}/>
-    <h3>球種別球速・変化量 <small>{rows.length}球</small></h3>
-    <table className="opponent-table arsenal-table"><colgroup>{Array.from({length:6},(_,i)=><col key={i}/>)}</colgroup><thead><tr><th colSpan={2}>球種・球数</th><th colSpan={2}>球速 km/h</th><th>縦変化 cm</th><th>横変化 cm</th></tr><tr><th>球種</th><th>球数</th>{['平均','最高','平均','平均'].map((x,i)=><th key={i}>{x}</th>)}</tr></thead><tbody>{summary.map(r=><tr key={r.pitchType}><th>{r.pitchType}</th><td>{r.pitches}</td>{[r.avgVelocity,r.maxVelocity,r.avgIvb,r.avgHb].map((x,i)=><td key={i}>{num(x)}</td>)}</tr>)}</tbody></table>
+    <h3>球種別球速 <small>{rows.length}球</small></h3>
+    <table className="opponent-table arsenal-table"><colgroup>{Array.from({length:4},(_,i)=><col key={i}/>)}</colgroup><thead><tr><th colSpan={2}>球種・球数</th><th colSpan={2}>球速 km/h</th></tr><tr><th>球種</th><th>球数</th>{['平均','最高'].map((x,i)=><th key={i}>{x}</th>)}</tr></thead><tbody>{summary.map(r=><tr key={r.pitchType}><th>{r.pitchType}</th><td>{r.pitches}</td>{[r.avgVelocity,r.maxVelocity].map((x,i)=><td key={i}>{num(x)}</td>)}</tr>)}</tbody></table>
     <h3>カウント別投球分析</h3>{countMatrix(rows)}
     {!rows.length&&<p>この左右条件の投球データはありません。</p>}
   </article>;
@@ -45,6 +46,7 @@ export function OpponentPacket({team,label,pitchers,batters,teamBatting,include,
   const chunks=Array.from({length:Math.ceil(batters.length/10)},(_,i)=>batters.slice(i*10,i*10+10));
   return <>
     {include.pitchers&&pitchers.flatMap(player=>REPORT_SIDES.map(side=><PitcherPacketPage key={`${player.id}-${side}`} {...{player,team,label,side,countMatrix}}/>))}
+    {include.pitcherBatterSides&&pitchers.map(player=><div className="opponent-print-page bp-report" data-print-kind="batter-side" key={`pitcher-sides-${player.id}`}><BatterPdfPage perspective="pitcher" rows={player.pitches} {...{label,locationPlot,legend,pitchColors}}/></div>)}
     {include.summary&&chunks.map((players,i)=><TeamBattingPage key={i} {...{players,team,label,teamPitches:teamBatting,page:i+1,totalPages:chunks.length}}/>)}
     {batters.map(player=><div className="opponent-batter-group" key={player.id}>
       {include.batters&&<div className="opponent-print-page bp-report" data-print-kind="batter-side"><BatterPdfPage rows={player.pitches} {...{label,locationPlot,legend,pitchColors}}/></div>}
@@ -58,13 +60,13 @@ export default function OpponentReport({team,pitches,label,countMatrix,locationP
   const pitchers=useMemo(()=>groupReportPlayers(pitches,team,'pitcher'),[pitches,team]);
   const batters=useMemo(()=>groupReportPlayers(pitches,team,'batter'),[pitches,team]);
   const [pitcherIds,setPitcherIds]=useState<string[]>([]),[batterIds,setBatterIds]=useState<string[]>([]);
-  const [include,setInclude]=useState({pitchers:true,batters:true,summary:true,directions:true});
+  const [include,setInclude]=useState({pitchers:true,pitcherBatterSides:true,batters:true,summary:true,directions:true});
   const selectedPitchers=pitchers.filter(p=>pitcherIds.includes(p.id)),selectedBatters=batters.filter(p=>batterIds.includes(p.id));
-  const pages=(include.pitchers?selectedPitchers.length*2:0)+(include.batters?selectedBatters.length:0)+(include.directions?selectedBatters.length:0)+(include.summary?Math.ceil(selectedBatters.length/10):0);
+  const pages=(include.pitchers?selectedPitchers.length*2:0)+(include.pitcherBatterSides?selectedPitchers.length:0)+(include.batters?selectedBatters.length:0)+(include.directions?selectedBatters.length:0)+(include.summary?Math.ceil(selectedBatters.length/10):0);
   const toggle=(id:string,ids:string[],set:(ids:string[])=>void)=>set(ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
   return <details className="opponent-picker" onToggle={e=>setOpen(e.currentTarget.open)}><summary>{team}｜対戦大学の資料を一括印刷</summary>
     <p className="opponent-context">{label}｜現在の検索条件を適用</p>
-    <div className="opponent-report-options">{([['pitchers','投手：左右別カウント・球速・変化量'],['batters','打者：左右別打者分析'],['summary','大学別：FS・外変・打球方向'],['directions','打者：左右×球種別打球方向']] as const).map(([key,text])=><label key={key}><input type="checkbox" checked={include[key]} onChange={e=>setInclude({...include,[key]:e.target.checked})}/>{text}</label>)}</div>
+    <div className="opponent-report-options">{([['pitchers','投手：左右別カウント・球速'],['pitcherBatterSides','投手：左右別打者分析（投手）'],['batters','打者：左右別打者分析'],['summary','大学別：FS・外変・打球方向'],['directions','打者：左右×球種別打球方向']] as const).map(([key,text])=><label key={key}><input type="checkbox" checked={include[key]} onChange={e=>setInclude({...include,[key]:e.target.checked})}/>{text}</label>)}</div>
     <div className="opponent-player-pickers">{([{role:'投手',players:pitchers,ids:pitcherIds,set:setPitcherIds},{role:'打者',players:batters,ids:batterIds,set:setBatterIds}]).map(({role,players,ids,set})=><fieldset key={role}><legend>{role}</legend><div className="opponent-selection-actions"><button type="button" onClick={()=>set(players.map(p=>p.id))}>{role}を全選択</button><button type="button" onClick={()=>set([])}>選択解除</button></div><div className="opponent-player-list">{players.map(p=><label key={p.id}><input type="checkbox" checked={ids.includes(p.id)} onChange={()=>toggle(p.id,ids,set)}/>{p.name}<small>{p.pitches.length}球</small></label>)}</div>{!players.length&&<p>対象選手なし</p>}</fieldset>)}</div>
     <button type="button" className="primary-button" disabled={!pages} onClick={()=>void printReport(`#${id}`,'opponent')}>選択資料を印刷／PDF保存（{pages}ページ）</button>
     <details className="opponent-definitions"><summary>集計方法</summary><p>内角ストレートは打者側のゾーン1/3とその外側のボール球。割合は各カウントの全球数が分母です。投球位置不明は内角に含めません。FSは打席で最初のストライク相当球。直球はストレート、変化球はその他の判別できた球種。外変は打者の外側25cm超の変化球、Whiffの分母は外変を振った回数です。方向はバントを除くフェア打球。距離未計測は方向図に描画せず、種別不明は終点のみ表示します。</p></details>
@@ -72,10 +74,19 @@ export default function OpponentReport({team,pitches,label,countMatrix,locationP
   </details>;
 }
 
-export function BatterDirectionReport({pitches,label}:{pitches:Row[];label:string}) {
+export function BatterDirectionReport({pitches,label,printOnly=false}:{pitches:Row[];label:string;printOnly?:boolean}) {
   const id=`direction-${useId().replace(/[^a-zA-Z0-9_-]/g,'')}`;
-  const players=useMemo(()=>[...new Set(pitches.map(p=>p.batterTeam))].flatMap(team=>groupReportPlayers(pitches,team,'batter')),[pitches]);
-  const [selected,setSelected]=useState('');
-  const current=players.find(p=>p.id===selected)||players[0];
-  return <section id={id} className="direction-report"><div className="bs-actions"><label>表示する選手 <select value={current?.id||''} disabled={!players.length} onChange={e=>setSelected(e.target.value)}>{players.map(p=><option key={p.id} value={p.id}>{p.name}（{p.pitches[0].batterTeam}）</option>)}</select></label><button type="button" className="secondary-button" disabled={!current} onClick={()=>void printReport(`#${id}`,'batter-direction')}>打球方向を印刷／PDF保存</button></div>{current?<DirectionPacketPage player={current} team={current.pitches[0].batterTeam} label={label}/>:<p>対象データがありません。</p>}</section>;
+  const rows=pitches.filter(p=>REPORT_SIDES.includes(p.batterSide));
+  const maxDistance=Math.max(120,...rows.filter(drawableBattedBall).map(p=>p.distance));
+  return <section id={id} className="direction-report">
+    {!printOnly&&<AnalysisPrintSelection key={label} pitches={pitches} kind="batter-direction" renderPages={rows=><BatterDirectionReport printOnly pitches={rows} label={`${rows[0].pitcherKanji||rows[0].pitcher}（${rows[0].pitcherTeam}）・${label}`}/>}/>}
+    <div className="bs-actions"><button type="button" className="secondary-button" disabled={!rows.some(drawableBattedBall)} onClick={()=>void printReport(`#${id}`,'batter-direction')}>打球方向を印刷／PDF保存</button></div>
+    {rows.length?<article className="opponent-print-page opponent-direction-page" data-print-kind="batter-side">
+      <Heading name={printOnly?`${pitches[0].pitcherKanji||pitches[0].pitcher}｜右打者・左打者の通算`:"右打者・左打者の通算"} team="検索条件内" title="左右別打球方向｜捕手視点" label={label}/>
+      <div className="opponent-direction-grid">{REPORT_PITCH_GROUPS.map(group=>(['右','左'] as const).map(side=>{
+        const subset=rows.filter(p=>p.batterSide===side&&reportPitchGroup(p)===group);
+        return <section key={`${group}-${side}`}><h3>対{side}打者・{group}</h3><BattedBallDirectionChart rows={subset} maxDistance={maxDistance}/></section>;
+      }))}</div><BattedDirectionLegend/>
+    </article>:<p>対象データがありません。</p>}
+  </section>;
 }

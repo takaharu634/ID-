@@ -6,6 +6,10 @@ import { csvRows, encodeCsv } from '../lib/import-validation.mjs';
 import { buildDatasetFromCsv } from '../lib/csv-analytics.js';
 
 const ball = (overrides: Record<string, unknown> = {}) => ({ id: 'p1', gameId: 'g1', batterId: 'b1', batterTeam: '中央大学', pitcherTeam: '東洋大学', inning: 1, half: '表', date: '2026-09-01', pitchNo: 1, balls: 0, strikes: 0, result: 'インプレー', playResult: 'アウト', stadium: 'JinguStadium', exitVelocity: 151, distance: 65, launchAngle: 15, sprayAngle: 0, hitType: 'LineDrive', ...overrides });
+test('conflicting Walk on a hit-by-pitch keeps the recorded HBP reason', () => {
+  const rows=buildQabAppearances([ball({result:'死球',playResult:'',korbb:'Walk',exitVelocity:null})]);
+  assert.equal(rows[0].result,'死球'); assert.deepEqual(rows[0].reasons,['死球']);
+});
 
 test('A changes by direction, uses a 3m margin, includes fence-clearing balls and exact boundaries', () => {
   for (const [bearing, fence] of [[-45,97.5],[-22.5,112.3],[0,120],[22.5,112.3],[45,97.5]]) {

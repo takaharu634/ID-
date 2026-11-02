@@ -78,6 +78,29 @@ test('missing measurements and PA metadata are not invented; game metadata fills
   assert.deepEqual(buildPitcherGameLog([], [], 'p1'), []);
 });
 
+test('game pitch-type measurements exclude missing values, retain signed movement and release side, and follow filters', () => {
+  const pitches = [
+    { ...base, id: 'a', spin: 2300, ivb: -40, hb: -30, releaseHeight: 170, extension: 180, releaseSide: -40 },
+    { ...base, id: 'b', spin: 2500, ivb: 20, hb: 10, releaseHeight: 180, extension: 200, releaseSide: 0 },
+    { ...base, id: 'missing', spin: null, ivb: null, hb: null, releaseHeight: null, extension: null, releaseSide: null },
+    { ...base, id: 'other-type', pitchType: 'フォーク', spin: 900, releaseHeight: 165, extension: 190, releaseSide: -25 },
+    { ...base, id: 'other-game', gameId: 'g2', spin: 3000, releaseHeight: 200, extension: 220, releaseSide: 70 },
+    { ...base, id: 'other-pitcher', pitcherId: 'p2', spin: 3500 },
+  ];
+  const game = buildPitcherGameLog(pitches, [], 'p1').find(row => row.gameId === 'g1')!;
+  const row = game.arsenal.find(row => row.pitchType === 'ストレート')!;
+  assert.equal(row.pitches, 3);
+  assert.equal(row.avgSpin, 2400); assert.equal(row.maxSpin, 2500);
+  assert.equal(row.avgIvb, -10); assert.equal(row.maxIvb, -40);
+  assert.equal(row.avgHb, -10); assert.equal(row.maxHb, -30);
+  assert.equal(row.avgReleaseHeight, 175); assert.equal(row.avgExtension, 190); assert.equal(row.avgReleaseSide, -20);
+  const filtered = buildPitcherGameLog([pitches[1]], [], 'p1', pitches)[0].arsenal[0];
+  assert.equal(filtered.avgSpin, 2500); assert.equal(filtered.maxSpin, 2500);
+  assert.equal(filtered.avgReleaseHeight, 180); assert.equal(filtered.avgExtension, 200); assert.equal(filtered.avgReleaseSide, 0);
+  const empty = buildPitcherGameLog([pitches[2]], [], 'p1', pitches)[0].arsenal[0];
+  for (const field of ['avgSpin', 'maxSpin', 'avgIvb', 'maxIvb', 'avgHb', 'maxHb', 'avgReleaseHeight', 'avgExtension', 'avgReleaseSide'] as const) assert.equal(empty[field], null, field);
+});
+
 test('all three bundled seasons retain every pitcher-game pitch and agree with independent measured averages and maxima', () => {
   for (const season of ['2026-fall', '2026-spring', '2025-fall']) {
     const data = JSON.parse(readFileSync(`public/data/season-${season}.json`, 'utf8'));
@@ -94,6 +117,13 @@ test('all three bundled seasons retain every pitcher-game pitch and agree with i
         const measured = source.filter((pitch: Row) => pitch.pitchType === row.pitchType && typeof pitch.velocity === 'number' && Number.isFinite(pitch.velocity));
         const expected = measured.length ? measured.reduce((sum: number, pitch: Row) => sum + pitch.velocity, 0) / measured.length : null;
         assert.equal(row.avgVelocity, expected);
+        const group = source.filter((pitch: Row) => pitch.pitchType === row.pitchType);
+        for (const [field, key] of [['spin', 'avgSpin'], ['ivb', 'avgIvb'], ['hb', 'avgHb'], ['releaseHeight', 'avgReleaseHeight'], ['extension', 'avgExtension'], ['releaseSide', 'avgReleaseSide']] as const) {
+          const values = group.map((pitch: Row) => pitch[field]).filter((value: unknown) => typeof value === 'number' && Number.isFinite(value));
+          assert.equal(row[key], values.length ? values.reduce((sum: number, value: number) => sum + value, 0) / values.length : null, `${season}/${game.gameId}/${row.pitchType}/${key}`);
+        }
+        const spins = group.map((pitch: Row) => pitch.spin).filter((value: unknown) => typeof value === 'number' && Number.isFinite(value));
+        assert.equal(row.maxSpin, spins.length ? Math.max(...spins) : null);
       }
     }
     assert.equal(counted, data.pitches.length);

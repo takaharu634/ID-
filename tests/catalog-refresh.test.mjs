@@ -16,10 +16,10 @@ test('a changed catalog invalidates current data, unchanged catalogs retain iden
     return Response.json(data);
   };
   try {
-    const output = await build({ stdin: { contents: `export { refreshSeasonCatalog } from './lib/season-catalog'; export { loadStaticDataset } from './lib/dataset-loader';`, resolveDir: resolve(import.meta.dirname, '..'), loader: 'ts' }, bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external' });
+    const output = await build({ stdin: { contents: `export { refreshSeasonCatalog } from './lib/season-catalog'; export { loadStaticDataset, resetDatasetCache, getDatasetRevision, subscribeDatasetRefresh } from './lib/dataset-loader';`, resolveDir: resolve(import.meta.dirname, '..'), loader: 'ts' }, bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external' });
     const module = { exports: {} };
     new Function('require', 'module', 'exports', output.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
-    const { refreshSeasonCatalog, loadStaticDataset } = module.exports;
+    const { refreshSeasonCatalog, loadStaticDataset, resetDatasetCache, getDatasetRevision, subscribeDatasetRefresh } = module.exports;
     const path = '/data/season-2035-spring.json';
     const first = await refreshSeasonCatalog();
     assert.equal((await loadStaticDataset(path)).metadata.revision, 'first');
@@ -34,6 +34,13 @@ test('a changed catalog invalidates current data, unchanged catalogs retain iden
     await refreshSeasonCatalog();
     assert.equal((await loadStaticDataset(path)).metadata.revision, 'added-game');
     assert.equal(calls, 3);
+    const beforeReset=getDatasetRevision(), visibleLoads=[];
+    const unsubscribe=subscribeDatasetRefresh(()=>visibleLoads.push(loadStaticDataset(path)));
+    resetDatasetCache();
+    assert.equal(getDatasetRevision(),beforeReset+1);
+    assert.equal((await Promise.all(visibleLoads))[0].metadata.revision,'added-game');
+    assert.equal(calls,4,'same-catalog recovery reloads subscribed views from the new shared loader');
+    unsubscribe();
   } finally { globalThis.fetch = original; }
 });
 

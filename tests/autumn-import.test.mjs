@@ -62,6 +62,30 @@ test('published autumn input has unique pitches and matches the verified source 
   assert.equal(dataset.pitches.length, manifest.summary.pitches);
   assert.equal(dataset.games.length, manifest.summary.games);
   assert.ok(dataset.pitches.every(p => p.year === 2026 && p.season === '秋'));
+  const corrected = dataset.pitches.find(p => p.id === 'd688e1b0-bdf8-11f1-8598-61febcdafd6c');
+  assert.equal(corrected.exitVelocity, null);
+  assert.equal(corrected.qabMeasurements.ev, null);
+  assert.equal(corrected.playResult, 'アウト');
+  assert.equal(dataset.batters.find(b => b.id === corrected.batterId).maxExitVelocity, 172);
+});
+
+test('confirmed Aizawa EV error stays excluded on CSV reimport without deleting the pitch or other high EVs', async () => {
+  const bytes = await readFile(new URL('../data/trackman/2026-fall/1EonxwARwSaAAV3BLELOWmMLUwQ1XILFq.csv', import.meta.url));
+  const raw = parseTrackman(bytes).rows.find(r => r.PitchUID === 'd688e1b0-bdf8-11f1-8598-61febcdafd6c');
+  assert.equal(raw.ExitSpeed, '190.02336');
+  const { buildDatasetFromRows } = await import('../lib/csv-analytics.js');
+  const d = buildDatasetFromRows([raw, { ...raw, PitchUID: 'another-valid-high-EV', PitchNo: '61' }], { season: '2026年秋季' });
+  assert.equal(d.pitches.length, 2);
+  assert.equal(d.pitches[0].exitVelocity, null);
+  assert.equal(d.pitches[0].qabMeasurements.ev, null);
+  assert.equal(d.pitches[0].outsOnPlay, 2);
+  assert.equal(d.pitches[1].exitVelocity, 190);
+  assert.equal(d.batters[0].bbe, 1);
+  const merged = mergeAutumnSources([{ name: '20261002-JinguStadium-1_unverified.csv', bytes }]);
+  const reimported = buildDatasetFromCsv(merged.csv, { season: '2026年秋季' });
+  validateAutumnBatting(reimported, merged.rows);
+  assert.equal(reimported.pitches.find(p => p.id === raw.PitchUID).exitVelocity, null);
+  assert.equal(raw.ExitSpeed, '190.02336');
 });
 
 test('folder sync preserves the agreed Nita and Fujimoto pitch classifications', async t => {

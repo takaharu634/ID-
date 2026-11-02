@@ -2,29 +2,8 @@ import { catcherX } from './catcher-view.ts';
 import type { Dataset, Row } from './dataset-types.ts';
 import { DEFAULT_ZONE as ZONE } from './scouting-analytics.ts';
 
-// User's 2026 autumn plate-umpire memos, supplied 2026-09-17 and 2026-09-26. Exact game IDs,
-// dates and both teams are checked; future games are never assigned by rotation.
-export const UMPIRE_ASSIGNMENTS = [
-  ['5ecf7804-f446-4d0e-9999-e24514f6a185','2026-09-08','立正大学','國學院大學','岩崎'],
-  ['e7d32124-4801-42db-a9a9-45af606bcf6b','2026-09-09','國學院大學','立正大学','吉田'],
-  ['e901d7dd-66fa-44d7-afc3-81d75a94b74b','2026-09-10','國學院大學','立正大学','大槻'],
-  ['9a31c327-3a1e-4967-bf27-b9697f8bcd66','2026-09-09','東洋大学','亜細亜大学','福壽'],
-  ['5833e511-9ac7-4759-b3fe-c1cddef76bfe','2026-09-10','亜細亜大学','東洋大学','寺尾'],
-  ['723a31a5-4d73-4b62-8aa1-66f696860a74','2026-09-08','中央大学','青山学院大学','川合'],
-  ['408de075-ce56-491e-a7d4-1221b0dcd78a','2026-09-09','青山学院大学','中央大学','石丸'],
-  ['e11c8806-a948-40df-abfc-f2c4670766d4','2026-09-10','青山学院大学','中央大学','熊倉'],
-  ['26184f26-271e-450b-87db-b18a0a533e27','2026-09-18','東洋大学','青山学院大学','吉田'],
-  ['844da01e-4d2a-4ebc-ab43-0fd62c44be20','2026-09-18','立正大学','亜細亜大学','湯田'],
-  ['9d464b82-3ccc-4002-8d69-b87e3cf8048d','2026-09-18','中央大学','國學院大學','石丸'],
-  ['ad7b3b80-0af4-473b-a57b-66c15b5177fb','2026-09-24','青山学院大学','東洋大学','熊倉'],
-  ['75ba3be9-caa5-4715-b40e-62c4d90e45b2','2026-09-24','亜細亜大学','立正大学','菅原'],
-  ['b04e7d0c-7511-4d10-b192-06401e4f01f2','2026-09-24','國學院大學','中央大学','吉田'],
-] as const;
-// The 2026-09-25 CSV is not available yet. Keep the user's explicit memo without
-// inventing a GameUID; apply it only to one exact date/home/away match after import.
-export const UMPIRE_MEMOS_WITHOUT_GAME_ID = [
-  ['2026-09-25','國學院大學','中央大学','福壽'],
-] as const;
+import { UMPIRE_ASSIGNMENTS, UMPIRE_MEMOS_WITHOUT_GAME_ID } from './umpire-assignments.mjs';
+export { UMPIRE_ASSIGNMENTS, UMPIRE_MEMOS_WITHOUT_GAME_ID };
 export type Take = Row & { actual: number; expected: number | null; umpire: string; plateX: number; plateZ: number };
 export type Summary = ReturnType<typeof summarize>;
 export function sampleLabel(n: number) { return n < 30 ? '参考' : n < 80 ? '低' : n < 150 ? '中' : '高'; }

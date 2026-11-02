@@ -46,3 +46,7 @@ Blast%/Bat Speedは元データ不足のため数値を生成しない。
 - 個人ページ/追加ランキングは同じ計算を使用。UI切替時に最低件数とソートが旧指標から漏れないことを実画面で確認。
 
 参考: MLB公式 PutAway glossary / Pop Time glossary / Catcher Framing glossary、TrackMan Radar Glossary of V3 Terms。独自指標の詳細はUIの折りたたみ計算方法で表示。
+
+## 2026-10-22 打者概要の表示整理
+
+打者「概要」の「打球タイプ別EV」の見出しと表を削除。Pull Air%、角度SD、2ストライクContact%、Good Decision%、領域別スイング率は従来どおり表示する。

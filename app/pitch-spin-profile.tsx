@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 
 import { catcherX } from "../lib/catcher-view";
 import { pitchProjection } from "../lib/chart-geometry";
-import { loadStaticDataset } from "../lib/dataset-loader";
+import { loadStaticDataset, useDatasetRevision } from "../lib/dataset-loader";
 import { useSeasonCatalog } from "../lib/season-catalog";
 
 export type PitchMeasurement = {
@@ -620,6 +620,7 @@ function spinMatchKey(pitch: PitchMeasurement) {
 
 export default function PitchSpinProfile({ season, playerId, playerName, pitches: filteredPitches, filtersActive, initialPitchType }: PitchSpinProfileProps) {
   const { revision } = useSeasonCatalog();
+  const datasetRevision = useDatasetRevision();
   const [seasonPitches, setSeasonPitches] = useState<PitchMeasurement[]>([]);
   const [dataState, setDataState] = useState<"loading" | "ready" | "error">("loading");
   const [selectedId, setSelectedId] = useState(japanesePitchIds[initialPitchType ?? ""] ?? "fastball");
@@ -647,7 +648,7 @@ export default function PitchSpinProfile({ season, playerId, playerName, pitches
       })
       .catch(() => { if (active) setDataState("error"); });
     return () => { active = false; };
-  }, [season, playerId, revision]);
+  }, [season, playerId, revision, datasetRevision]);
 
   const playerPitches = useMemo(() => {
     if (!filtersActive) return seasonPitches;

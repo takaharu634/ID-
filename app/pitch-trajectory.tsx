@@ -53,7 +53,7 @@ export default function PitchTrajectoryView({ season, pitchCount }: { season: Se
         key={attempt}
         ref={frame}
         className="trajectory-frame"
-        src={`/trajectory-studio/index.html?embedded=1&season=${encodeURIComponent(season)}&v=${manifest.sourceCommit}`}
+        src={`/trajectory-studio/index.html?embedded=1&season=${encodeURIComponent(season)}&v=${manifest.renderRevision ?? manifest.sourceCommit}`}
         title="投球軌道スタジオ"
         allowFullScreen
         style={{ height }}

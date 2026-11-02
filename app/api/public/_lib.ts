@@ -1,5 +1,7 @@
-import { applyPitchQuality } from '../../../lib/pitch-quality.mjs';
+import { repairLegacyOutcomes } from '../../../lib/repair-legacy-outcomes.mjs';
 import { repairLegacyAggregates } from '../../../lib/repair-legacy-aggregates.ts';
+import { normalizeGameDates } from '../../../lib/game-dates.ts';
+import { withoutEstimatedPerformance } from '../../../lib/retired-performance.ts';
 export type PublicDataset = {
   metadata?: Record<string, unknown>;
   league?: Record<string, unknown>;
@@ -13,6 +15,8 @@ export type PublicDataset = {
 };
 
 type StorageEnv = { BUCKET?: R2Bucket };
+
+export const currentPublicDataset = <T>(value: T): T => withoutEstimatedPerformance(normalizeGameDates(repairLegacyAggregates(repairLegacyOutcomes(value))));
 
 export const jsonHeaders = {
   "access-control-allow-origin": "*",
@@ -32,13 +36,13 @@ export async function loadPublicDataset(request: Request): Promise<PublicDataset
   const bucket = runtime.BUCKET;
   if (bucket) {
     const current = await activeObject(bucket,season);
-    if (current) return applyPitchQuality(repairLegacyAggregates(await current.json())) as PublicDataset;
+    if (current) return currentPublicDataset(await current.json()) as PublicDataset;
     const legacy = await bucket.get("datasets/current.json");
-    if (legacy) { const value = await legacy.json() as PublicDataset; if (value.metadata?.season === seasonLabel(season)) return applyPitchQuality(repairLegacyAggregates(value)); }
+    if (legacy) { const value = await legacy.json() as PublicDataset; if (value.metadata?.season === seasonLabel(season)) return currentPublicDataset(value); }
   }
   const response = await fetch(new URL(`/data/season-${season}.json`, request.url), { cache: "no-store" });
   if (!response.ok) throw new Error("公開データを読み込めませんでした。");
-  return applyPitchQuality(repairLegacyAggregates(await response.json())) as PublicDataset;
+  return currentPublicDataset(await response.json()) as PublicDataset;
 }
 
 export function normalize(value: unknown) {
@@ -115,7 +119,6 @@ export function datasetInfo(dataset: PublicDataset) {
     title: dataset.metadata?.title,
     season: dataset.metadata?.season,
     generatedAt: dataset.metadata?.generatedAt,
-    pitchQuality: dataset.metadata?.pitchQuality,
     source: "ID東都公開集計データ",
   };
 }
