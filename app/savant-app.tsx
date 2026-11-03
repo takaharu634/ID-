@@ -29,10 +29,11 @@ import { comparisonSlots } from "../lib/player-comparison";
 import { summarizeByPitchType } from "../lib/pitch-summary";
 import { withPitchTypeExtrema, pitchExtremaSortValue } from "../lib/pitch-extrema";
 import { pitcherStrikeoutRows, pitchStrikeoutRows } from "../lib/strikeout-rankings";
-import { SELECTED_RANKINGS, SELECTED_MIN_LABELS, selectedBoardConfig } from '../lib/selected-rankings';
+import { SELECTED_RANKINGS, SELECTED_MIN_LABELS, selectedBoardConfig, selectedRankingRows } from '../lib/selected-rankings';
 import { PitcherDevelopment, BatterDevelopment, CatcherDevelopment, developmentOptions, developmentBoardConfig, DEVELOPMENT_MIN_LABELS, DevelopmentDefinition } from "./player-development";
 import QabPanel, { QabDefinition } from "./qab-panel";
 import { qabAppearances, qabRankingRows } from "../lib/qab";
+import { batterExtraRows, pitcherExtraRows, pitchTypeExtraRows, platoonRows } from "../lib/extra-rankings";
 import BatterSideReport from './batter-side-report';
 import OpponentReport, { BatterDirectionReport } from './opponent-report';
 import { insideFastballCount, teamBattingSummary } from '../lib/opponent-report';
@@ -80,7 +81,7 @@ type NewsItem = {
   sourceName: string; sourceUrl: string;
   isFeatured?: boolean; tags?: string[];
 };
-type Column = { key: string; label: string; format?: "number" | "decimal" | "rate" | "plus" | "time" | "seconds" | "innings"; player?: boolean };
+type Column = { key: string; label: string; format?: "number" | "decimal" | "rate" | "plus" | "time" | "seconds" | "innings" | "degrees" | "percent"; player?: boolean };
 const MOVEMENT_COLUMNS: Column[] = [{ key: "avgIvb", label: "平均縦変化量" }, { key: "maxIvb", label: "最大縦変化量" }, { key: "avgHb", label: "平均横変化量" }, { key: "maxHb", label: "最大横変化量" }, { key: "avgVaa", label: "平均進入角" }, { key: "maxVaa", label: "最大進入角" }];
 
 type Benchmark = {
@@ -124,6 +125,9 @@ const BOARD_LABELS: Record<string, string> = {
   batting_percentile: "打撃・総合打撃成績",
   batting_pitch_types: "打撃・球種別成績",
   batting_value: "打撃・得点価値",
+  batting_discipline: "打撃・選球眼",
+  batting_batted_ball: "打撃・打球の種類と方向",
+  batting_platoon: "打撃・左右別成績",
   pitching_strikeouts: "投球・奪三振数",
   pitching_strikeout_rate: "投球・奪三振率",
   pitching_strikeout_pitches: "投球・三振を取った球種",
@@ -135,6 +139,10 @@ const BOARD_LABELS: Record<string, string> = {
   pitching_movement: "投球・球種別の変化量",
   pitching_angle: "投球・ボールを放す位置と角度",
   pitching_spin: "投球・球種別の回転数",
+  pitching_extension: "投球・エクステンションと体感球速",
+  pitching_discipline: "投球・ゾーン率と制球",
+  pitching_batted_ball: "投球・打たれた打球の種類",
+  pitching_platoon: "投球・左右別成績",
   catching_framing: "捕手・フレーミング",
   catching_pop: "捕手・二塁送球",
 };
@@ -152,7 +160,14 @@ const BOARD_DESCRIPTIONS: Record<string, string> = {
   pitching_arsenal: "球種ごとの使用率・平均球速・最高球速を比較します。初期表示は平均球速が高い順です。",
   pitching_movement: "球種ごとの縦・横の変化量を比較します。変化の大きさだけで球の良し悪しは決まりません。",
   pitching_angle: "投球時にボールを放した高さ・左右の位置と、投げ出した角度を比較します。",
-  pitching_spin: "1分あたりの回転数（rpm）を球種ごとに比較します。初期表示は平均回転数が多い順です。",
+  pitching_spin: "1分あたりの回転数（rpm）を球種ごとに比較します。回転効率は軌道から推定した参考値、回転軸は計測値の平均方向です。初期表示は平均回転数が多い順です。",
+  pitching_extension: "投手板からリリースまで前へ出た距離（エクステンション）と、打者の体感球速を球種ごとに比較します。体感差は「体感球速－実際の球速」の平均です。初期表示は平均エクステンションが大きい順です。",
+  pitching_discipline: "ストライクゾーンに届いた割合（ゾーン率）を、チェイス率・初球ストライク率・四死球率と並べて比較します。チェイス率・初球ストライク率・四死球率は単独ランキングと同じ値です。初期表示はゾーン率が高い順です。",
+  pitching_batted_ball: "打たれた打球のゴロ・ライナー・フライ・ポップフライの割合を比較します。バントと種類未記録の打球は除きます。初期表示はゴロ率が高い順です。",
+  pitching_platoon: "左打者・右打者それぞれに対する被打率・被長打率・奪三振率・与四死球率を比較します。1人の投手が対左・対右の2行に分かれます。",
+  batting_discipline: "ゾーン内の球を振った割合、ボール球を振った割合、ゾーン内で当てた割合、四球率・三振率を比較します。初期表示は四球率が高い順です。",
+  batting_batted_ball: "打球のゴロ・ライナー・フライ・ポップフライの割合と、引っ張り・センター・逆方向の割合を比較します。バントと種類未記録の打球は除きます。",
+  batting_platoon: "左投手・右投手それぞれに対する打率・長打率・三振率・四球率を比較します。1人の打者が対左・対右の2行に分かれます。",
   catching_pop: "二塁送球のポップタイムを捕手別に比較します。初期表示は最速値の速い順です。",
 };
 
@@ -170,6 +185,9 @@ const NAV_SECTIONS = [
       ["総合打撃成績", "batting_percentile"],
       ["球種別成績", "batting_pitch_types"],
       ["得点価値", "batting_value"],
+      ["選球眼", "batting_discipline"],
+      ["打球の種類と方向", "batting_batted_ball"],
+      ["左右別成績", "batting_platoon"],
     ],
   },
   {
@@ -187,6 +205,10 @@ const NAV_SECTIONS = [
       ["球種別の変化量", "pitching_movement"],
       ["ボールを放す位置と角度", "pitching_angle"],
       ["球種別の回転数", "pitching_spin"],
+      ["エクステンション・体感球速", "pitching_extension"],
+      ["ゾーン率と制球", "pitching_discipline"],
+      ["打たれた打球の種類", "pitching_batted_ball"],
+      ["左右別成績", "pitching_platoon"],
     ],
   },
   {
@@ -221,6 +243,8 @@ function formatValue(value: any, format: Column["format"] = "number") {
   if (format === "time") return `${Number(value).toFixed(2)}秒`;
   if (format === "seconds") return `${Number(value).toFixed(3)}秒`;
   if (format === "innings") return String(value);
+  if (format === "degrees") return `${Math.round(Number(value))}°`;
+  if (format === "percent") return `${Number(value).toFixed(1)}%`;
   if (Number.isFinite(Number(value))) {
     const displayed = Number(value).toLocaleString("ja-JP", { maximumFractionDigits: 1 });
     return displayed === "-0" ? "0" : displayed;
@@ -617,7 +641,7 @@ export default function SavantApp() {
         {route.view === "trajectory" && <PitchTrajectoryView key={season} season={season} pitchCount={data.pitches.length} />}
         {route.view === "compare" && <CompareView key={`${season}:${route.playerId ?? ""}`} data={data} navigate={navigate} initialPlayerId={route.playerId} />}
         {route.view === "stats" && <StatsView data={data} navigate={navigate} />}
-        {route.view === "leaders" && <LeaderboardsView key={`${season}:${route.board ?? ""}`} data={data} board={route.board ?? "pitching_strikeouts"} navigate={navigate} />}
+        {route.view === "leaders" && <LeaderboardsView key={`${season}:${route.board ?? ""}`} season={season} data={data} board={route.board ?? "pitching_strikeouts"} navigate={navigate} />}
         {route.view === "spin" && <SpinView data={data} season={season} />}
         {route.view === "shift" && <ShiftView data={data} navigate={navigate} />}
         {route.view === "player" && selectedPlayer && <PlayerView key={`${season}:${selectedPlayer.id}`} season={season} data={data} player={selectedPlayer} navigate={navigate} news={news} />}
@@ -1595,7 +1619,9 @@ function batterPitchTypeRows(data: Dataset) {
   return [...groups.values()].map((row) => ({ ...row, swingRate: row.swings / row.pitches, whiffRate: row.swings ? row.whiffs / row.swings : null, avgExitVelocity: row.bbe ? row.evSum / row.bbe : null, hardHitRate: row.bbe ? row.hardHit / row.bbe : null }));
 }
 
-function boardConfig(data: Dataset, board: string): { rows: Row[]; columns: Column[]; minKey: string; minDefault: number; playerKey: string; defaultSort: string; defaultDirection: "asc" | "desc" } {
+type SpinRows = { rows: Row[]; season: string } | null;
+
+function boardConfig(data: Dataset, board: string, spin: SpinRows = null): { rows: Row[]; columns: Column[]; minKey: string; minDefault: number; playerKey: string; defaultSort: string; defaultDirection: "asc" | "desc" } {
   board = activeRankingBoard(board);
   const selected = selectedBoardConfig(data, board);
   if (selected) return selected;
@@ -1613,6 +1639,9 @@ function boardConfig(data: Dataset, board: string): { rows: Row[]; columns: Colu
     batting_percentile: [...battingBase, { key: "wrcPlus", label: "打撃生産指数+", format: "plus" }, { key: "avgExitVelocity", label: "平均打球速度" }, { key: "chaseRate", label: "ボール球スイング率", format: "rate" }, { key: "whiffRate", label: "空振り率", format: "rate" }],
     batting_pitch_types: [{ key: "batter", label: "打者", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "swingRate", label: "スイング率", format: "rate" }, { key: "whiffRate", label: "空振り率", format: "rate" }, { key: "avgExitVelocity", label: "平均打球速度" }, { key: "hardHitRate", label: "強打率", format: "rate" }],
     batting_value: [...battingBase, { key: "wrcPlus", label: "打撃生産指数+", format: "plus" }, { key: "woba", label: "加重出塁率", format: "decimal" }, { key: "ops", label: "出塁率＋長打率", format: "decimal" }],
+    batting_discipline: [...battingBase, { key: "pa", label: "打席" }, { key: "zoneSwingRate", label: "ゾーン内スイング率", format: "rate" }, { key: "chaseRate", label: "ボール球スイング率", format: "rate" }, { key: "zoneContactRate", label: "ゾーン内コンタクト率", format: "rate" }, { key: "whiffRate", label: "空振り率", format: "rate" }, { key: "walkRate", label: "四球率", format: "rate" }, { key: "strikeoutRate", label: "三振率", format: "rate" }],
+    batting_batted_ball: [...battingBase, { key: "pa", label: "打席" }, { key: "battedBalls", label: "打球数" }, { key: "groundBallRate", label: "ゴロ率", format: "rate" }, { key: "lineDriveRate", label: "ライナー率", format: "rate" }, { key: "flyBallRate", label: "フライ率", format: "rate" }, { key: "popupRate", label: "ポップフライ率", format: "rate" }, { key: "pullRate", label: "引っ張り率", format: "rate" }, { key: "centerRate", label: "センター方向率", format: "rate" }, { key: "oppositeRate", label: "逆方向率", format: "rate" }],
+    batting_platoon: [{ key: "batter", label: "打者", player: true }, { key: "team", label: "大学" }, { key: "split", label: "対戦" }, { key: "pa", label: "打席" }, { key: "ab", label: "打数" }, { key: "hits", label: "安打" }, { key: "battingAverage", label: "打率", format: "decimal" }, { key: "sluggingPercentage", label: "長打率", format: "decimal" }, { key: "strikeoutRate", label: "三振率", format: "rate" }, { key: "walkRate", label: "四球率", format: "rate" }],
     pitching_strikeouts: strikeoutColumns,
     pitching_strikeout_rate: strikeoutColumns,
     pitching_strikeout_pitches: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "strikeouts", label: "奪三振" }, { key: "pitchStrikeoutShare", label: "全奪三振に占める割合", format: "rate" }],
@@ -1623,13 +1652,18 @@ function boardConfig(data: Dataset, board: string): { rows: Row[]; columns: Colu
     pitching_arsenal: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "usageRate", label: "使用率", format: "rate" }, { key: "avgVelocity", label: "平均球速" }, { key: "maxVelocity", label: "最高球速" }],
     pitching_movement: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, ...MOVEMENT_COLUMNS, { key: "avgExtension", label: "エクステンション" }],
     pitching_angle: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "avgReleaseHeight", label: "リリース高" }, { key: "avgReleaseSide", label: "リリース横" }, { key: "avgVerticalReleaseAngle", label: "縦リリース角" }, { key: "avgHorizontalReleaseAngle", label: "横リリース角" }],
-    pitching_spin: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "avgSpin", label: "平均回転数" }, { key: "avgIvb", label: "縦変化" }, { key: "avgHb", label: "横変化" }],
+    pitching_spin: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "avgSpin", label: "平均回転数" }, { key: "avgSpinEfficiency", label: "回転効率", format: "percent" }, { key: "avgSpinAxis", label: "回転軸", format: "degrees" }, { key: "avgIvb", label: "縦変化" }, { key: "avgHb", label: "横変化" }],
+    pitching_extension: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "pitchType", label: "球種" }, { key: "pitches", label: "球数" }, { key: "avgVelocity", label: "平均球速" }, { key: "avgExtension", label: "平均エクステンション" }, { key: "maxExtension", label: "最大エクステンション" }, { key: "avgEffectiveVelocity", label: "体感球速" }, { key: "effectiveVelocityGain", label: "体感差" }],
+    pitching_discipline: [...pitchingBase, { key: "battersFaced", label: "対戦打席" }, { key: "zoneRate", label: "ゾーン率", format: "rate" }, { key: "selectedChaseRate", label: "チェイス率", format: "rate" }, { key: "selectedFirstStrikeRate", label: "初球ストライク率", format: "rate" }, { key: "walkHbpRate", label: "四死球率", format: "rate" }, { key: "strikeoutRate", label: "奪三振率", format: "rate" }],
+    pitching_batted_ball: [...pitchingBase, { key: "battedBalls", label: "打球数" }, { key: "groundBallRate", label: "ゴロ率", format: "rate" }, { key: "lineDriveRate", label: "ライナー率", format: "rate" }, { key: "flyBallRate", label: "フライ率", format: "rate" }, { key: "popupRate", label: "ポップフライ率", format: "rate" }],
+    pitching_platoon: [{ key: "pitcher", label: "投手", player: true }, { key: "team", label: "大学" }, { key: "split", label: "対戦" }, { key: "pa", label: "対戦打席" }, { key: "ab", label: "打数" }, { key: "battingAverage", label: "被打率", format: "decimal" }, { key: "sluggingPercentage", label: "被長打率", format: "decimal" }, { key: "strikeoutRate", label: "奪三振率", format: "rate" }, { key: "walkHbpRate", label: "与四死球率", format: "rate" }],
     catching_framing: [{ key: "name", label: "捕手", player: true }, { key: "team", label: "大学" }, { key: "received", label: "捕球数" }, { key: "shadowPitches", label: "境界球" }, { key: "actualStrikeRate", label: "実ストライク率", format: "rate" }, { key: "expectedStrikeRate", label: "期待ストライク率", format: "rate" }, { key: "extraStrikes", label: "追加ストライク" }, { key: "framingRuns", label: "フレーミング得点" }, { key: "framingPer1000", label: "境界1000球換算" }],
     catching_pop: [{ key: "name", label: "捕手", player: true }, { key: "team", label: "大学" }, { key: "popTimeSamples", label: "二塁送球数" }, { key: "avgPopTime", label: "平均ポップタイム", format: "seconds" }, { key: "fastestPopTime", label: "最速ポップタイム", format: "seconds" }, { key: "medianPopTime", label: "中央値ポップタイム", format: "seconds" }],
   };
   const isPitchStrikeouts = board === "pitching_strikeout_pitches";
   const isStrikeouts = board === "pitching_strikeouts" || board === "pitching_strikeout_rate";
-  const isPitchType = board.startsWith("pitching_") && ["pitching_arsenal", "pitching_movement", "pitching_angle", "pitching_spin", "pitching_strikeout_pitches"].includes(board);
+  const isPitchType = board.startsWith("pitching_") && ["pitching_arsenal", "pitching_movement", "pitching_angle", "pitching_spin", "pitching_extension", "pitching_strikeout_pitches"].includes(board);
+  const isPlatoon = board === "pitching_platoon" || board === "batting_platoon";
   const isCatcher = board.startsWith("catching_");
   const isFraming = board === "catching_framing";
   const isPopTime = board === "catching_pop";
@@ -1641,6 +1675,8 @@ function boardConfig(data: Dataset, board: string): { rows: Row[]; columns: Colu
     batting_hr: ["homeRuns", "desc"],
     batting_percentile: ["wrcPlus", "desc"], batting_value: ["wrcPlus", "desc"],
     batting_pitch_types: ["avgExitVelocity", "desc"],
+    batting_discipline: ["walkRate", "desc"], batting_batted_ball: ["groundBallRate", "desc"], batting_platoon: ["battingAverage", "desc"],
+    pitching_extension: ["avgExtension", "desc"], pitching_discipline: ["zoneRate", "desc"], pitching_batted_ball: ["groundBallRate", "desc"], pitching_platoon: ["battingAverage", "asc"],
     pitching_profile: ["avgExitVelocityAllowed", "asc"], pitching_ev: ["hardHitRateAllowed", "asc"],
     pitching_hr: ["homeRuns", "asc"],
     pitching_value: ["pitchValuePer100", "desc"],
@@ -1653,28 +1689,48 @@ function boardConfig(data: Dataset, board: string): { rows: Row[]; columns: Colu
   const selectedColumns = configs[board] ?? configs.pitching_strikeouts;
   const [defaultSort, defaultDirection] = defaultSorts[board] ?? [selectedColumns[selectedColumns.length - 1]?.key ?? "pitches", "desc"];
   return {
-    rows: board === "batting_qab" ? qabRankingRows(data.batters, data.pitches) : isBatterPitchType ? batterPitchTypeRows(data) : isPitchStrikeouts ? pitchStrikeoutRows(data.pitchers, data.pitches) : isStrikeouts ? pitcherStrikeoutRows(data.pitchers) : isPitchType ? (board === "pitching_movement" ? withPitchTypeExtrema(data.pitchTypes, data.pitches) : data.pitchTypes) : isCatcher ? data.catchers : board.startsWith("batting_") ? battingRows : data.pitchers,
+    rows: board === "pitching_extension" || board === "pitching_spin" ? pitchTypeExtraRows(data.pitchTypes, data.pitches, spin?.rows ?? null, spin?.season ?? "")
+      : board === "pitching_discipline" || board === "pitching_batted_ball" ? pitcherExtraRows(selectedRankingRows(data).pitching, data.pitches)
+      : board === "batting_discipline" || board === "batting_batted_ball" ? batterExtraRows(data.batters, data.pitches)
+      : board === "pitching_platoon" ? platoonRows(data.pitchers, data.pitches, "pitcher")
+      : board === "batting_platoon" ? platoonRows(data.batters, data.pitches, "batter")
+      : board === "batting_qab" ? qabRankingRows(data.batters, data.pitches) : isBatterPitchType ? batterPitchTypeRows(data) : isPitchStrikeouts ? pitchStrikeoutRows(data.pitchers, data.pitches) : isStrikeouts ? pitcherStrikeoutRows(data.pitchers) : isPitchType ? (board === "pitching_movement" ? withPitchTypeExtrema(data.pitchTypes, data.pitches) : data.pitchTypes) : isCatcher ? data.catchers : board.startsWith("batting_") ? battingRows : data.pitchers,
     columns: selectedColumns,
-    minKey: isPitchType || isBatterPitchType ? "pitches" : isFraming ? "shadowPitches" : isPopTime ? "popTimeSamples" : isCatcher ? "received" : board.startsWith("batting_") ? "pa" : "pitches",
-    minDefault: board === "pitching_strikeouts" || isPitchStrikeouts ? 1 : isBatterPitchType ? (batterDisplayMinimum(data.batters) === 1 ? 1 : 25) : isPitchType ? 25 : isPopTime ? 1 : isCatcher ? 100 : board.startsWith("batting_") ? batterDisplayMinimum(battingRows) : 100,
-    playerKey: isBatterPitchType ? "batterId" : isPitchType ? "pitcherId" : "id",
+    minKey: isPlatoon ? "pa" : isPitchType || isBatterPitchType ? "pitches" : isFraming ? "shadowPitches" : isPopTime ? "popTimeSamples" : isCatcher ? "received" : board.startsWith("batting_") ? "pa" : "pitches",
+    minDefault: isPlatoon ? 10 : board === "pitching_strikeouts" || isPitchStrikeouts ? 1 : isBatterPitchType ? (batterDisplayMinimum(data.batters) === 1 ? 1 : 25) : isPitchType ? 25 : isPopTime ? 1 : isCatcher ? 100 : board.startsWith("batting_") ? batterDisplayMinimum(battingRows) : 100,
+    playerKey: isBatterPitchType || board === "batting_platoon" ? "batterId" : isPitchType || board === "pitching_platoon" ? "pitcherId" : "id",
     defaultSort,
     defaultDirection,
   };
 }
 
-function LeaderboardsView({ data, board, navigate }: { data: Dataset; board: string; navigate: (route: RouteState) => void }) {
+// Spin efficiency lives in the separate spin feed; load it only for the spin board.
+function useSpinRows(season: SeasonKey, enabled: boolean): SpinRows {
+  const [spin, setSpin] = useState<SpinRows>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    loadStaticDataset<Row[]>(`/data/spin-${season}.json`)
+      .then((rows) => { if (active) setSpin({ rows, season }); })
+      .catch(() => { if (active) setSpin(null); });
+    return () => { active = false; };
+  }, [season, enabled]);
+  return enabled && spin?.season === season ? spin : null;
+}
+
+function LeaderboardsView({ season, data, board, navigate }: { season: SeasonKey; data: Dataset; board: string; navigate: (route: RouteState) => void }) {
   board = activeRankingBoard(board);
   const menuScroll = useRef(0);
   const metricView = useViewState(`leadersMetrics|${data.metadata.season}|${board}`, { group: 'standard' });
   const options = developmentOptions(board);
   const group = options.some(([key]) => key === metricView.state.group) ? metricView.state.group : 'standard';
-  return <LeaderboardsContent key={`${data.metadata.season}|${board}|${group}`} data={data} board={board} navigate={navigate} group={group} menuScroll={menuScroll} setGroup={value => metricView.set('group', value)} />;
+  return <LeaderboardsContent key={`${data.metadata.season}|${board}|${group}`} season={season} data={data} board={board} navigate={navigate} group={group} menuScroll={menuScroll} setGroup={value => metricView.set('group', value)} />;
 }
 
-function LeaderboardsContent({ data, board, navigate, group, setGroup, menuScroll }: { data: Dataset; board: string; navigate: (route: RouteState) => void; group: string; setGroup: (group: string) => void; menuScroll: { current: number } }) {
+function LeaderboardsContent({ season, data, board, navigate, group, setGroup, menuScroll }: { season: SeasonKey; data: Dataset; board: string; navigate: (route: RouteState) => void; group: string; setGroup: (group: string) => void; menuScroll: { current: number } }) {
   const options = developmentOptions(board);
-  const config = useMemo(() => group === 'standard' ? boardConfig(data, board) : developmentBoardConfig(data, board, group), [data, board, group]);
+  const spin = useSpinRows(season, group === 'standard' && board === "pitching_spin");
+  const config = useMemo(() => group === 'standard' ? boardConfig(data, board, spin) : developmentBoardConfig(data, board, group), [data, board, group, spin]);
   const remembered = useViewState(group === 'standard' ? `leaders|${data.metadata.season}|${board}` : `leadersDevelopment|${data.metadata.season}|${board}|${group}`, { team: "", minimum: config.minDefault, query: "", sortKey: config.defaultSort, direction: config.defaultDirection as "asc" | "desc" });
   const { team, minimum, query, direction } = remembered.state;
   const sortKey = config.columns.some(column => column.key === remembered.state.sortKey) ? remembered.state.sortKey : config.defaultSort;
@@ -1697,6 +1753,10 @@ function LeaderboardsContent({ data, board, navigate, group, setGroup, menuScrol
           {board === 'catching_framing' && <details className="chart-definition"><summary>球審・試合差の補正</summary><p>追加ストライク・フレーミング得点・境界1000球換算は補正済みです。投球位置、打者左右、カウント、球種、球速、投手と捕手を同時に考慮し、球審の広い・狭い傾向と試合ごとの判定差を補正します。球審登録 {data.metadata.framing?.registeredUmpireGames ?? 0}／{data.games.length}試合。未登録試合は試合差のみ補正します。少数標本はリーグ平均へ近づけ、偶然の判定差や投手・捕手の組合せによる影響は残ります。</p></details>}
           {group === "standard" && board.startsWith("batting_") && <details className="chart-definition"><summary>集計条件</summary><p>{batterDisplayMinimum(board === "batting_ops" ? config.rows : data.batters) === 1 ? "20打席に達した打者がまだいないため、1打席以上から表示しています。" : "最低打席数を変更すると、出場の少ない打者も表示できます。"} 20打席未満は参考値です。打球未計測の項目は「—」で表示します。</p>{board === "batting_average" && <p>公式個人成績が紐付く選手は公式記録を優先し、それ以外は収録された打席結果から計算しています。</p>}{board === "batting_ops" && <p>OPSと最低打席数はTrackMan収録分を使います。収録された打席結果から計算するため、公式成績とは異なる場合があります。犠打・犠飛が区別されていないため、出塁率の分母には両方が含まれる参考値です。</p>}</details>}
           {group === "standard" && board.startsWith("pitching_strikeout") && <details className="chart-definition"><summary>奪三振の集計条件</summary><p>収録された打席結果が三振の記録を集計します。奪三振率は奪三振数÷完了した対戦打席数です。球種別では三振を取った最後の1球を数え、球種不明の記録も含めます。</p></details>}
+          {group === "standard" && (board === "pitching_platoon" || board === "batting_platoon") && <details className="chart-definition"><summary>左右別成績の集計条件</summary><p>TrackManに収録された打席結果から集計します。打数は打席から四球・死球・犠打・犠飛を除いた数です。収録データでは犠打と犠飛を区別できないため、出塁率は表示していません。公式記録と一致しない場合があります。最低打席数は1行（対左・対右それぞれ）ごとに判定します。</p></details>}
+          {group === "standard" && (board === "pitching_batted_ball" || board === "batting_batted_ball") && <details className="chart-definition"><summary>打球の種類の集計条件</summary><p>インプレーのうち、打球の種類（ゴロ・ライナー・フライ・ポップフライ）が記録された打球を対象にします。バントと種類未記録の打球は除きます。打球の方向は中堅から左右15°以内をセンター、それより引っ張り側・逆側をそれぞれ数え、±45°を超える打球は除きます。</p></details>}
+          {group === "standard" && (board === "pitching_discipline" || board === "batting_discipline") && <details className="chart-definition"><summary>ゾーンの集計条件</summary><p>ゾーンは横 −0.254〜0.254 m、高さ 0.45〜1.05 m の固定範囲で、打者ごとの上下限ではありません。ゾーン率・ゾーン内スイング率は投球位置を計測でき、位置の信頼度がLowではない球だけを数えます。打者の四球率・三振率は完了した打席数で割ります。投手の四球は、単独ランキングと同じく四死球率にまとめています。</p></details>}
+          {group === "standard" && (board === "pitching_extension" || board === "pitching_spin") && <details className="chart-definition"><summary>エクステンション・回転の集計条件</summary><p>最大エクステンションは計測された1球の最大値です。体感球速はTrackManのEffectiveVeloの平均、体感差は1球ごとの「体感球速－リリース球速」の平均です。回転効率は軌道データからの推定値で、推定できなかった球は除きます。回転軸は角度の平均方向で、大小に良し悪しはありません。</p></details>}
           <div className="toolbar leaderboard-toolbar">{!board.startsWith("umpiring_") && <label>大学<select value={team} onChange={(event) => setTeam(event.target.value)}><option value="">すべて</option>{data.teams.map((row) => <option key={row.name}>{row.name}</option>)}</select></label>}<label>最低{SELECTED_MIN_LABELS[config.minKey] ?? DEVELOPMENT_MIN_LABELS[config.minKey] ?? (config.minKey === "pa" ? "打席" : config.minKey === "received" ? "捕球" : config.minKey === "shadowPitches" ? "境界球" : config.minKey === "popTimeSamples" ? "二塁送球" : "球数")}<input type="number" min="0" value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} /></label><label>{board.startsWith("umpiring_") ? "球審検索" : "選手検索"}<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={board.startsWith("umpiring_") ? "球審名" : "選手名"} /></label><span>{rows.length}{config.playerKey === "pitcherId" || config.playerKey === "batterId" ? "件" : "人"}</span></div>
           <div className="table-scroll"><table className="data-table leaderboard-table"><thead><tr><th>順位</th>{config.columns.map((column) => <th key={column.key} aria-sort={sortKey === column.key ? (direction === "asc" ? "ascending" : "descending") : "none"}><div className="leader-column-head">{getMetricInfo(column.key, column.label) ? <MetricLabel label={column.label} metricKey={column.key} /> : <button type="button" onClick={() => sort(column.key)}>{column.label}</button>}<button className="sort-control" type="button" data-direction={sortKey === column.key ? direction : "none"} onClick={() => sort(column.key)} aria-label={`${column.label}を${sortKey === column.key && direction === "desc" ? "昇順" : "降順"}に並べ替え`}><svg viewBox="0 0 16 20" width="16" height="20" aria-hidden="true" focusable="false"><path className="sort-up" d="m4 7 4-4 4 4"/><path className="sort-down" d="m4 13 4 4 4-4"/></svg></button></div></th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row[config.playerKey]}-${row.pitchType ?? ""}-${index}`}><td className="rank-cell">{index + 1}</td>{config.columns.map((column) => <td key={column.key}>{column.player ? <button className="text-link" onClick={() => navigate({ view: "player", playerId: row[config.playerKey] })}>{row.kanji || row.pitcherKanji || row.batterKanji || row[column.key]}</button> : formatValue(row[column.key], column.format)}</td>)}</tr>)}</tbody></table></div>
           {!rows.length && <div className="empty-state"><p>{board.startsWith("umpiring_") && !config.rows.length ? "このシーズンには球審登録済みで比較条件を満たす記録がありません。球審メモのある2026年秋季を選択してください。" : "現在の条件に合う記録がありません。"}</p><button className="secondary-button" onClick={() => { setMinimum(0); setTeam(""); setQuery(""); }}>条件を解除して収録済みの記録を表示</button></div>}
